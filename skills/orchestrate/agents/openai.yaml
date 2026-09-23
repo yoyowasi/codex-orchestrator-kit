@@ -1,0 +1,4 @@
+interface:
+  display_name: "전문가 팀 오케스트레이터"
+  short_description: "필요한 전문가를 선택해 작업 배분부터 통합과 검증까지 총괄"
+  default_prompt: "Use $orchestrate to select the specialists needed for my task, coordinate their work, and verify the combined result."
