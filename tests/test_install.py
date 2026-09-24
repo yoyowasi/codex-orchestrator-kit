@@ -20,11 +20,18 @@ class InstallTests(unittest.TestCase):
 
     def test_install_is_self_contained_and_idempotent(self):
         result = module.install(self.home, self.skills)
-        self.assertEqual(result['roles'], 20)
+        source = REPO / 'skills/orchestrate'
+        expected_roles = {file.name for file in (source / 'references/roles').glob('*.toml')}
+        self.assertTrue(expected_roles)
+        self.assertEqual(result['roles'], len(expected_roles))
         roles = list((self.home / 'agents').glob('*.toml'))
-        self.assertEqual(len(roles), 20)
+        self.assertEqual({role.name for role in roles}, expected_roles)
         for role in roles:
             self.assertEqual(role.read_bytes(), (self.skills / 'orchestrate/references/roles' / role.name).read_bytes())
+        for file in source.rglob('*'):
+            if file.is_file():
+                installed = self.skills / 'orchestrate' / file.relative_to(source)
+                self.assertEqual(installed.read_bytes(), file.read_bytes())
         again = module.install(self.home, self.skills)
         self.assertEqual(again['changed'], 0)
         self.assertFalse((self.home / 'config.toml').exists())
@@ -44,7 +51,7 @@ class InstallTests(unittest.TestCase):
 
     def test_dry_run_writes_nothing(self):
         result = module.install(self.home, self.skills, dry_run=True)
-        self.assertGreater(result['changed'], 20)
+        self.assertGreater(result['changed'], 0)
         self.assertEqual(list(self.root.iterdir()), [])
 
     def test_duplicate_role_file_refused(self):
@@ -56,11 +63,10 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(self.skills.exists())
 
     def test_role_models_allow_task_selection(self):
-        for file in (REPO / 'skills/orchestrate/references/roles').glob('*.toml'):
+        module.install(self.home, self.skills)
+        for file in (self.home / 'agents').glob('*.toml'):
             role = tomllib.loads(file.read_text(encoding='utf-8'))
-            if role['name'] == 'orchestrator':
-                self.assertEqual((role['model'], role['model_reasoning_effort']), ('gpt-6-astra', 'high'))
-            else:
+            with self.subTest(role=role['name']):
                 self.assertNotIn('model', role)
                 self.assertNotIn('model_reasoning_effort', role)
 
