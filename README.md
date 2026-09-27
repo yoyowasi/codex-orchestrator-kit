@@ -44,6 +44,8 @@ $skill-installer https://github.com/yoyowasi/codex-orchestrator-kit/tree/main/sk
 
 수동으로 설치하려면 저장소의 `skills/orchestrate` 폴더 전체를 개인 스킬 디렉터리 `~/.agents/skills/orchestrate`에 복사합니다. 역할 지침도 스킬 안에 포함되어 있어 별도 전역 역할 등록 없이 읽어 사용할 수 있습니다. 이 TOML들은 지침 자료이며, 폴더에 놓는 것만으로 네이티브 커스텀 에이전트가 자동 등록되지는 않습니다. 생성 도구가 역할 이름을 지원하지 않으면 총괄이 필요한 역할 지침을 작업 배정에 전달합니다.
 
+스킬만 복사하거나 `$skill-installer`로 설치하면 동시 실행 상한은 바뀌지 않습니다. 아래 설치기를 사용하면 상한이 지정되지 않은 환경에 서브에이전트 기본 상한 12개를 설정합니다.
+
 프로젝트에서 새 Codex 대화를 열고 다음처럼 요청합니다.
 
 ```text
@@ -82,7 +84,7 @@ macOS / Linux:
 python3 scripts/install.py
 ```
 
-설치기는 스킬을 `~/.agents/skills/orchestrate`, 역할 별칭 37개를 `$CODEX_HOME/agents`에 복사합니다. `CODEX_HOME`이 없으면 `~/.codex/agents`를 사용합니다. 계정 인증 정보나 `config.toml`은 변경하지 않습니다.
+설치기는 스킬을 `~/.agents/skills/orchestrate`, 역할 별칭 37개를 `$CODEX_HOME/agents`에 복사합니다. `CODEX_HOME`이 없으면 `~/.codex`를 사용합니다. 같은 Codex 홈의 `config.toml`에 동시 실행 상한이 없으면 **메인 에이전트를 제외한 서브에이전트 12개**를 기본값으로 설정합니다. 기존 상한과 다른 설정, 계정 인증 정보는 보존합니다.
 
 | 옵션 | 동작 |
 |---|---|
@@ -90,10 +92,32 @@ python3 scripts/install.py
 | `--force` | 내용이 다른 기존 파일을 백업한 뒤 교체 |
 | `--skills-dir PATH` | 스킬 설치 디렉터리 지정 |
 | `--codex-home PATH` | 역할과 CLI 상태의 Codex 홈 지정 |
+| `--max-subagents N` | 서브에이전트 상한을 양의 정수 N으로 지정하며, 기존 상한이 있으면 교체 |
 | `--with-cli` | Windows용 여러 창 실행기도 설치 |
 | `--bin-dir PATH` | `codex-team.cmd`를 둘 디렉터리 지정 |
 
 기존 파일과 내용이 다르면 기본적으로 설치를 멈춥니다. 업데이트는 내용을 확인한 뒤 `--force`를 사용합니다. 백업 경로와 원래 경로 목록이 출력됩니다. 이전에 `~/.codex/skills/orchestrate`에 설치했다면 `--skills-dir`로 그 스킬 디렉터리를 지정해 동명 스킬이 중복 등록되지 않게 합니다.
+
+### 동시 실행 상한
+
+설치기가 설정하는 값은 다음과 같습니다.
+
+```toml
+[agents]
+max_concurrent_threads_per_session = 12
+```
+
+기존 `agents.max_concurrent_threads_per_session` 또는 이전 이름인 `agents.max_threads`가 있으면 기본 설치는 그 값을 유지합니다. 상한을 직접 바꾸려면 다음처럼 실행합니다. `--force`는 변경되는 기존 파일을 백업한 뒤 교체하며, 기존 `config.toml`에 기본값을 추가할 때도 필요합니다.
+
+```powershell
+py -3 scripts/install.py --max-subagents 12 --force
+```
+
+기존 설치 위치가 `~/.codex/skills`라면 위 명령에도 `--skills-dir`로 해당 경로를 지정합니다. 먼저 `--dry-run --force`를 함께 사용하면 파일을 쓰지 않고 변경 계획을 확인할 수 있습니다.
+
+설정 파일의 주석과 기존 내용을 보존하기 위해 일반 `[agents]` 섹션과 루트의 `agents.<키>` 형태를 수정합니다. `agents = {...}` 같은 인라인 테이블 등 자동 수정이 어려운 형식에서 값 변경이 필요하면 파일을 쓰기 전에 중단합니다. 이 경우 기존 값을 유지하면서 일반 `[agents]` 섹션으로 정리한 뒤 다시 실행합니다.
+
+12는 항상 생성할 인원수가 아니라 동시에 열 수 있는 서브에이전트의 설정 상한입니다. 실제 배정 수와 적용 시점은 현재 Codex 실행 환경에서 확인합니다. 변경된 상한이 보이지 않으면 새 대화에서 확인하거나 Codex를 재시작합니다. 별도 `codex-team` 실행기가 여는 창 개수는 이 설정으로 바뀌지 않습니다. [공식 하위 에이전트 설정](https://learn.chatgpt.com/docs/agent-configuration/subagents)을 참고하세요.
 
 ## 여러 CLI 창으로 보기
 
@@ -148,7 +172,7 @@ node --check tools/codex-team/codex-team.mjs
 node tests/team.test.mjs
 ```
 
-macOS / Linux에서는 `py -3` 대신 `python3`를 사용합니다. 테스트는 설치 대상 분리, 충돌 시 기존 파일 보존, 업데이트 백업, 경로 소유권 충돌, 모델 배정 인수를 확인합니다. 실제 모델의 판단 품질이나 모든 계정에서의 실행을 보장하지는 않습니다.
+macOS / Linux에서는 `py -3` 대신 `python3`를 사용합니다. 테스트는 설치 대상 분리, 기본 상한 12개와 기존 설정 보존, 충돌 시 기존 파일 보존, 업데이트 백업, 경로 소유권 충돌, 모델 배정 인수를 확인합니다. 실제 모델의 판단 품질이나 모든 계정에서의 실행을 보장하지는 않습니다.
 
 ## 현재 동작 범위
 

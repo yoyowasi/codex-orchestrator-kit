@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 from datetime import datetime, timezone
+import math
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -12,10 +15,180 @@ import tomllib
 import uuid
 
 REPO = Path(__file__).resolve().parents[1]
+DEFAULT_MAX_SUBAGENTS = 12
+LIMIT_KEY = 'max_concurrent_threads_per_session'
+LEGACY_LIMIT_KEY = 'max_threads'
+_KEY_PART = r'''(?:[A-Za-z0-9_-]+|'[^'\r\n]*'|"(?:[^"\\\r\n]|\\.)*")'''
+_KEY_PATH = rf'{_KEY_PART}(?:[ \t]*\.[ \t]*{_KEY_PART})*'
+_HEADER = re.compile(
+    rf'^[ \t]*(?P<open>\[\[?)[ \t]*(?P<key>{_KEY_PATH})[ \t]*'
+    r'(?P<close>\]\]?)[ \t]*(?:#[^\r\n]*)?(?:\r?\n)?$')
+_ASSIGNMENT = re.compile(rf'^[ \t]*(?P<key>{_KEY_PATH})[ \t]*=[ \t]*')
+
+
+def _key_path(source: str) -> tuple[str, ...]:
+    """Let the TOML parser decode quoted/dotted keys instead of interpreting them."""
+    value = tomllib.loads(source + ' = 0')
+    path = []
+    while isinstance(value, dict):
+        key, value = next(iter(value.items()))
+        path.append(key)
+    return tuple(path)
+
+
+def _statements(source: str):
+    """Yield complete TOML statements without mistaking multiline values for keys."""
+    start = i = depth = 0
+    quote = None
+    while i < len(source):
+        char = source[i]
+        if quote:
+            if quote[0] == '"' and char == '\\':
+                i += 2
+                continue
+            if source.startswith(quote, i):
+                i += len(quote)
+                if len(quote) == 3:
+                    # A multiline string can end with four or five quote marks.
+                    while i < len(source) and source[i] == quote[0]:
+                        i += 1
+                quote = None
+                continue
+        elif char in "\"'":
+            quote = char * 3 if source.startswith(char * 3, i) else char
+            i += len(quote)
+            continue
+        elif char == '#':
+            end = source.find('\n', i)
+            i = len(source) if end < 0 else end
+            continue
+        elif char in '[{':
+            depth += 1
+        elif char in ']}':
+            depth -= 1
+        elif char == '\n' and depth == 0:
+            yield start, i + 1, source[start:i + 1]
+            start = i + 1
+        i += 1
+    if start < len(source):
+        yield start, len(source), source[start:]
+
+
+def _same_toml(left, right) -> bool:
+    """Compare parsed values, including TOML nan, which normally differs from itself."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(_same_toml(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_same_toml(a, b) for a, b in zip(left, right))
+    return left == right or (isinstance(left, float) and math.isnan(left) and math.isnan(right))
+
+
+def _config_with_limit(data: bytes, max_subagents: int | None) -> tuple[bytes, int]:
+    """Patch only the concurrency setting, then verify all other TOML values agree."""
+    if max_subagents is not None and (type(max_subagents) is not int or max_subagents < 1):
+        raise ValueError('--max-subagents must be a positive integer.')
+    source = data.decode('utf-8-sig')
+    config = tomllib.loads(source)
+    agents = config.get('agents', {})
+    if not isinstance(agents, dict):
+        raise ValueError('config.toml agents must be a table.')
+    for key in (LIMIT_KEY, LEGACY_LIMIT_KEY):
+        if key in agents and (type(agents[key]) is not int or agents[key] < 1):
+            raise ValueError(f'config.toml agents.{key} must be a positive integer.')
+    if max_subagents is None:
+        for key in (LIMIT_KEY, LEGACY_LIMIT_KEY):
+            if key in agents:
+                return data, agents[key]
+    limit = DEFAULT_MAX_SUBAGENTS if max_subagents is None else max_subagents
+    expected = deepcopy(config)
+    expected.setdefault('agents', {})[LIMIT_KEY] = limit
+    expected['agents'].pop(LEGACY_LIMIT_KEY, None)
+    if _same_toml(expected, config):
+        return data, limit
+
+    newline_match = re.search(r'\r?\n', source)
+    newline = newline_match.group() if newline_match else '\n'
+    context = ()
+    agent_header_end = None
+    root_end = len(source)
+    root_dotted_agents = False
+    assignments = {}
+    for start, end, statement in _statements(source):
+        header = _HEADER.fullmatch(statement)
+        if header:
+            root_end = min(root_end, start)
+            context = _key_path(header['key'])
+            if context == ('agents',) and header['open'] == '[':
+                agent_header_end = end
+            continue
+        assignment = _ASSIGNMENT.match(statement)
+        if assignment:
+            key = _key_path(assignment['key'])
+            if not context and len(key) > 1 and key[0] == 'agents':
+                root_dotted_agents = True
+            full_key = context + key
+            if full_key in (('agents', LIMIT_KEY), ('agents', LEGACY_LIMIT_KEY)):
+                assignments[full_key[-1]] = (start, end, statement, assignment, context)
+
+    unsupported = ('Cannot safely edit the agents setting in config.toml. '
+                   'Use a regular [agents] table or root agents.<key> assignments '
+                   'instead of an inline table or another complex layout.')
+    edits = []
+    existing = [key for key in (LIMIT_KEY, LEGACY_LIMIT_KEY) if key in agents]
+    for key in existing:
+        if key not in assignments:
+            raise ValueError(unsupported)
+        start, end, statement, assignment, context = assignments[key]
+        # A valid integer is a single-line value. Keep its whitespace and comment.
+        value = re.fullmatch(r'([^#\r\n]*?)([ \t]*(?:#[^\r\n]*)?)(\r?\n)?',
+                             statement[assignment.end():])
+        if not value:
+            raise ValueError(unsupported)
+        suffix = value[2] + (value[3] or '')
+        if key == LEGACY_LIMIT_KEY and LIMIT_KEY in agents:
+            # Retain a legacy setting's explanation even when removing the alias.
+            replacement = suffix.lstrip(' \t') if '#' in value[2] else ''
+        else:
+            prefix = statement[:assignment.end()]
+            if key == LEGACY_LIMIT_KEY:
+                replacement_key = LIMIT_KEY if context else 'agents.' + LIMIT_KEY
+                prefix = (statement[:assignment.start('key')] + replacement_key
+                          + statement[assignment.end('key'):assignment.end()])
+            replacement = prefix + str(limit) + suffix
+        edits.append((start, end, replacement))
+    if not existing:
+        setting = f'{LIMIT_KEY} = {limit}{newline}'
+        if agent_header_end is not None:
+            offset = agent_header_end
+            insertion = setting
+        elif root_dotted_agents:
+            offset = root_end
+            insertion = 'agents.' + setting
+        else:
+            offset = len(source)
+            insertion = f'[agents]{newline}' + setting
+            if source and source.endswith('\n'):
+                insertion = newline + insertion
+        if offset and not source[:offset].endswith('\n'):
+            insertion = newline + insertion
+        edits.append((offset, offset, insertion))
+    updated = source
+    for start, end, replacement in sorted(edits, reverse=True):
+        updated = updated[:start] + replacement + updated[end:]
+    try:
+        verified = tomllib.loads(updated)
+    except tomllib.TOMLDecodeError as error:
+        raise ValueError(unsupported) from error
+    if not _same_toml(verified, expected):
+        raise ValueError(unsupported)
+    bom = b'\xef\xbb\xbf' if data.startswith(b'\xef\xbb\xbf') else b''
+    return bom + updated.encode('utf-8'), limit
 
 
 def install(codex_home: Path, skills_dir: Path, *, with_cli=False, bin_dir=None,
-            force=False, dry_run=False) -> dict:
+            force=False, dry_run=False, max_subagents=None) -> dict:
     codex_home = codex_home.expanduser().resolve()
     skills_dir = skills_dir.expanduser().resolve()
     source = REPO / 'skills' / 'orchestrate'
@@ -28,6 +201,11 @@ def install(codex_home: Path, skills_dir: Path, *, with_cli=False, bin_dir=None,
         if destination.exists() and not destination.is_file():
             raise ValueError(f'Destination is not a file: {destination}')
         plan.append((destination, data))
+
+    config_file = codex_home / 'config.toml'
+    config, limit = _config_with_limit(config_file.read_bytes() if config_file.exists() else b'',
+                                       max_subagents)
+    add(config, codex_home, Path('config.toml'))
 
     for item in sorted(source.rglob('*')):
         if item.is_file():
@@ -88,7 +266,8 @@ def install(codex_home: Path, skills_dir: Path, *, with_cli=False, bin_dir=None,
         raise FileExistsError('Existing files differ; review them and rerun with --force to back them up: '
                               + ', '.join(str(p) for p in conflicts))
     report = {'files': len(plan), 'changed': len(changed), 'roles': len(names),
-              'skill': str(skills_dir / 'orchestrate'), 'launcher': shim, 'dry_run': dry_run}
+              'skill': str(skills_dir / 'orchestrate'), 'launcher': shim, 'dry_run': dry_run,
+              'max_subagents': limit}
     if dry_run:
         return report
     if conflicts:
@@ -117,6 +296,8 @@ def main():
     parser.add_argument('--skills-dir', type=Path, default=Path.home() / '.agents' / 'skills')
     parser.add_argument('--with-cli', action='store_true', help='Install the optional Windows multi-window launcher')
     parser.add_argument('--bin-dir', type=Path, help='Launcher shim directory (default: APPDATA/npm)')
+    parser.add_argument('--max-subagents', type=int,
+                        help='Override the per-session subagent limit (positive integer; default: preserve existing or 12)')
     parser.add_argument('--force', action='store_true', help='Back up and replace conflicting files')
     parser.add_argument('--dry-run', action='store_true', help='Inspect the plan without writing files')
     args = parser.parse_args()
