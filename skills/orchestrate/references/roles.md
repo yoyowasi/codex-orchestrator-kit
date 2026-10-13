@@ -1,76 +1,90 @@
-# 역할 목록
+# Roles
 
-역할은 과업의 책임과 산출물을 고르는 기준이다. 필요한 역할의 TOML만 읽는다. `developer_instructions`는 배정 때 전달할 역할 지침이다. `sandbox_mode`는 요청할 권한 조건이며 실행 도구가 이를 지원하는지 확인해야 한다. 이 TOML 파일을 둔다고 Codex의 네이티브 에이전트가 자동 등록되지는 않는다.
+A role fixes a responsibility and its deliverables. It grants no tools, accounts or permissions, and it does not fix a model; choose the model per assignment with [models.md](models.md) and the skills with [skill-routing.md](skill-routing.md). One agent may cover several roles, and the peers a role mentions are possible partners, not agents to spawn.
 
-역할, 모델, 협업 위치(작성·검토·통합), 실제 도구 권한은 별도로 결정한다. 한 에이전트가 여러 역할을 겸할 수 있으며 간단한 작업에 불필요한 팀을 만들지 않는다. TOML의 협업 상대는 해당 팀에서 필요한 경우의 연결 예시이며 모두 생성하라는 뜻이 아니다. 작업에 맞는 스킬과 위임 범위는 [스킬 적용 기준](skill-routing.md)에서 확인한다.
+## Packs
 
-## 총괄·조사·의사결정
+Roles ship in packs. `core` is installed by default with the plugin or `install.py`; `dev`, `docs`, `business`, `content` and `agent-dev` are optional. Every role's full brief also ships with the skill as `roles/<id>.md` next to this file, so a role whose pack is not installed can still run in a generic agent with its brief pasted above the assignment.
 
-| 역할 | 책임과 대표 산출물 |
-|---|---|
-| [`orchestrator`](roles/orchestrator.toml) | 목표·의존성·전문가 배정을 조정하고 통합 결과와 검증을 보고한다. |
-| [`researcher`](roles/researcher.toml) | 공식·원자료를 조사하고 출처, 불확실성과 답을 정리한다. |
-| [`evidence_reviewer`](roles/evidence-reviewer.toml) | 비코드 산출물의 주장·수치·인용을 독립 확인한 검증표를 만든다. |
-| [`business_analyst`](roles/business-analyst.toml) | 업무 현황, 대안, 비용·효과와 사업 가정을 분석한 의사결정 자료를 만든다. |
-| [`user_insights_analyst`](roles/user-insights-analyst.toml) | 제공된 사용자 자료에서 과업과 문제를 추출한 근거 매트릭스를 만든다. |
-| [`operations_designer`](roles/operations-designer.toml) | 업무 분석을 담당자·예외·인계가 명확한 SOP와 체크리스트로 바꾼다. |
-| [`financial_modeler`](roles/financial-modeler.toml) | 비용·매출·현금흐름의 가정과 민감도를 담은 시나리오 모델을 만든다. |
-| [`product_manager`](roles/product-manager.toml) | 사용자 요구를 범위, 우선순위, 사용자 스토리와 수용 조건으로 정리한다. |
+A `$skill-installer` install registers no roles; every role then runs from its brief. Registered roles appear in `spawn_agent`'s "Available roles" list under their snake_case names. Only roles installed as custom agents (for example in `~/.codex/agents` or a project's `.codex/agents`) are registered; the briefs in this skill's `roles/` directory are not. A `codex-only` pack holds roles that depend on OpenAI-only products. A missing pack is added by rerunning `python scripts/install.py --packs <list>` from a clone of `yoyowasi/codex-orchestrator-kit`, listing every pack to keep; suggest that to the user only when the roles will be reused, and never install anything yourself.
 
-## 콘텐츠·교육·시각물
+## Access levels
 
-| 역할 | 책임과 대표 산출물 |
-|---|---|
-| [`content_strategist`](roles/content-strategist.toml) | 대상 독자, 메시지, 채널과 홍보 문안을 기획한다. |
-| [`creative_writer`](roles/creative-writer.toml) | 서사·대본·에세이 등 창작 원고와 개정본을 작성한다. |
-| [`localization_editor`](roles/localization-editor.toml) | 지정 언어권에 맞는 문안, 용어집과 변경 이유를 만든다. |
-| [`learning_designer`](roles/learning-designer.toml) | 학습 목표, 강의안, 실습과 평가 문항을 설계한다. |
-| [`technical_writer`](roles/technical-writer.toml) | 실제 동작에 맞는 README, API 문서와 사용 안내를 작성한다. |
-| [`presentation_designer`](roles/presentation-designer.toml) | 발표 흐름과 슬라이드 구조를 설계하고 프레젠테이션 산출물을 만든다. |
-| [`visual_creator`](roles/visual-creator.toml) | 사진·일러스트·목업 등 비트맵 이미지 자산을 제작한다. |
+| access | What the role file sets | Enforcement |
+|---|---|---|
+| `write` | nothing extra | none beyond your assignment's ownership |
+| `read-shell` | `sandbox_mode = "read-only"`; the role may run tests and analysis | advisory: current Codex source makes spawned agents inherit the parent session's permissions |
+| `read-only` | `sandbox_mode = "read-only"` | advisory, as above; treat "do not modify files" as an instruction unless verified on this Codex version |
 
-## 문서·데이터 산출물
+Where `sandbox_mode` is applied, such as in the optional codex-team launcher, read-shell roles are truly read-only: tests or builds that write caches, coverage or build output fail or need approval. Assign that work to a write role, or run it yourself.
 
-| 역할 | 책임과 대표 산출물 |
-|---|---|
-| [`data_analyst`](roles/data-analyst.toml) | 데이터를 정리하고 지표·시각화·분석 보고서를 만든다. |
-| [`document_producer`](roles/document-producer.toml) | DOCX를 제작·편집하고 렌더 품질을 확인한다. |
-| [`spreadsheet_modeler`](roles/spreadsheet-modeler.toml) | 스프레드시트의 수식·재계산·서식을 검증한 파일을 만든다. |
-| [`pdf_specialist`](roles/pdf-specialist.toml) | PDF 추출·생성·양식 필드와 렌더 품질을 확인한다. |
-| [`template_author`](roles/template-author.toml) | 반복 사용 가능한 아티팩트 템플릿 스킬과 사용 예시를 만든다. |
+Report access honestly: say "read-only by instruction" whenever tools do not enforce it.
 
-## 제품·웹·인터페이스
+## Catalog
 
-| 역할 | 책임과 대표 산출물 |
-|---|---|
-| [`ux_designer`](roles/ux-designer.toml) | 정보 구조, 사용자 흐름과 화면 명세를 설계한다. |
-| [`accessibility_auditor`](roles/accessibility-auditor.toml) | 기존 웹 UI의 접근성·인터페이스 문제를 재현 조건과 함께 검토한다. |
-| [`sites_builder`](roles/sites-builder.toml) | 사이트 소유 에이전트가 맡는 역할. Sites 제작·수정·게시를 수행하며 하위 작업은 자산·조사로 제한한다. |
-| [`architect`](roles/architect.toml) | 소프트웨어·업무 시스템의 구조, 입출력 계약, 의존성과 통합 순서를 설계한다. |
-| [`frontend_developer`](roles/frontend-developer.toml) | 일반 웹 프로젝트의 화면·상태·상호작용을 구현한다. |
-| [`backend_developer`](roles/backend-developer.toml) | API, 서버 로직, 인증·인가와 데이터 흐름을 구현한다. |
-| [`database_engineer`](roles/database-engineer.toml) | 스키마, SQL, 인덱스, 무결성과 마이그레이션을 설계·구현한다. |
+| Role | agent_type | Pack | Access | Description |
+| --- | --- | --- | --- | --- |
+| [architect](roles/architect.md) | `architect` | core | read-only | Designs software structure without editing files: component responsibilities, interface and data contracts, work split and integration order; pick it before changes that span modules. |
+| [backend-developer](roles/backend-developer.md) | `backend_developer` | core | write | Implements server-side code: APIs, business logic, authentication and authorization, external integrations and data flow; pick it for service or API changes. |
+| [evidence-reviewer](roles/evidence-reviewer.md) | `evidence_reviewer` | core | read-only | Independently verifies claims, figures, citations and reasoning in non-code deliverables such as reports, proposals and documentation; pick it before such a deliverable ships. |
+| [frontend-developer](roles/frontend-developer.md) | `frontend_developer` | core | write | Implements browser-side web UI: screens, components, client state, interactions and responsive layout in the project's framework; pick it for front-end code changes. |
+| [qa-engineer](roles/qa-engineer.md) | `qa_engineer` | core | write | Writes and runs unit, integration and end-to-end tests and reproduces reported bugs with evidence; pick it when a change needs new tests, a reproduction or regression proof. |
+| [researcher](roles/researcher.md) | `researcher` | core | write | Researches primary and official sources to answer a decision question with citations, dates and stated uncertainty; pick it for desk research before design, analysis or writing. |
+| [reviewer](roles/reviewer.md) | `reviewer` | core | read-shell | Reviews a code change for correctness defects, behavior regressions, broken contracts and missing tests without editing files; pick it for independent review after implementation. |
+| [security-reviewer](roles/security-reviewer.md) | `security_reviewer` | core | read-shell | Reviews code and configuration for reachable flaws in authentication, authorization, input handling, secrets and dependencies without editing files; pick it when trust boundaries change. |
+| [technical-writer](roles/technical-writer.md) | `technical_writer` | core | write | Writes README files, API references, installation guides and user manuals that match the actual code and product behavior; pick it for technical documentation. |
+| [accessibility-auditor](roles/accessibility-auditor.md) | `accessibility_auditor` | dev | read-only | Audits web UI source for accessibility and interface-guideline compliance without modifying files; pick it for read-only UI reviews, with a peer who can run the screens for live checks. |
+| [automation-engineer](roles/automation-engineer.md) | `automation_engineer` | dev | write | Writes scripts, file-processing jobs and tool integrations that automate repetitive tasks; pick it for task automation, not CI/CD pipelines or one-off app UI operations. |
+| [database-engineer](roles/database-engineer.md) | `database_engineer` | dev | write | Designs and implements schemas, SQL, indexes, data integrity and migrations; pick it for database-level work, not application data-access code or environment rollout. |
+| [devops-engineer](roles/devops-engineer.md) | `devops_engineer` | dev | write | Sets up builds, CI/CD, containers, environment configuration and observability; pick it for pipeline and release plumbing, with real deploys returned for approval. |
+| [performance-engineer](roles/performance-engineer.md) | `performance_engineer` | dev | write | Measures and diagnoses latency, rendering, memory, bundle size and throughput bottlenecks with before/after evidence; pick it when speed or resource use is the problem. |
+| [ux-designer](roles/ux-designer.md) | `ux_designer` | dev | write | Designs information architecture, user flows, screen layouts and interaction states for new or changed UI; pick it before or alongside frontend implementation. |
+| [data-analyst](roles/data-analyst.md) | `data_analyst` | docs | write | Cleans and explores data, defines metrics, and produces reproducible analyses, charts and findings; pick it when the question is what the data shows, not how a workbook is built. |
+| [document-producer](roles/document-producer.md) | `document_producer` | docs | write | Produces and edits formatted DOCX or Google Docs files (layout, tables, figures, comments, tracked changes) and checks rendered pages; pick it when the deliverable is a polished document file. |
+| [pdf-specialist](roles/pdf-specialist.md) | `pdf_specialist` | docs | write | Extracts text and tables from PDFs, creates, edits or fills PDF forms, and checks rendered pages; pick it for PDF-native work rather than authoring the DOCX source. |
+| [presentation-designer](roles/presentation-designer.md) | `presentation_designer` | docs | write | Turns material into a storyline and designs slides, charts and proposal visuals as PPTX or Google Slides; pick it when the deliverable is a deck rather than a document. |
+| [spreadsheet-modeler](roles/spreadsheet-modeler.md) | `spreadsheet_modeler` | docs | write | Builds and edits spreadsheet structure, formulas, recalculation, charts and formatting in files, Google Sheets or a live Excel workbook; pick it when a working workbook is the deliverable. |
+| [visual-creator](roles/visual-creator.md) | `visual_creator` | docs | write | Creates and edits standalone image assets such as illustrations, photos, textures and mockups, and reviews them for fit and consistency; pick it for new visuals, not UI code or data charts. |
+| [app-operator](roles/app-operator.md) | `app_operator` | business | write | Performs one-off tasks in a desktop or browser app the session can actually reach and confirms the resulting state; pick it for hands-on UI work, not repeatable automation. |
+| [business-analyst](roles/business-analyst.md) | `business_analyst` | business | write | Analyzes current business processes, alternatives, costs, benefits and assumptions to support a decision; pick it before modeling numbers in detail or designing procedures. |
+| [financial-modeler](roles/financial-modeler.md) | `financial_modeler` | business | write | Builds scenario models of cost, revenue and cash flow with documented assumptions and sensitivity analysis; pick it when a decision needs numbers projected over time. |
+| [operations-designer](roles/operations-designer.md) | `operations_designer` | business | write | Turns analyzed business work into runnable operating procedures with clear owners, handoffs and exception paths (SOPs, responsibility matrices, checklists); pick it once the analysis is settled. |
+| [product-manager](roles/product-manager.md) | `product_manager` | business | write | Turns user needs into product scope, priorities, user stories and acceptance criteria; pick it when the question is what to build and how success will be judged. |
+| [user-insights-analyst](roles/user-insights-analyst.md) | `user_insights_analyst` | business | read-only | Reads provided interviews, surveys, support tickets and usage notes to find recurring user tasks and problems backed by quoted evidence; pick it for qualitative user insight without file edits. |
+| [content-strategist](roles/content-strategist.md) | `content_strategist` | content | write | Defines audience, key messages and content plans and writes marketing or promotional copy; pick it for positioning, campaigns and channel-specific copy. |
+| [creative-writer](roles/creative-writer.md) | `creative_writer` | content | write | Writes and revises creative manuscripts such as stories, scripts and essays; pick it for narrative or literary work rather than marketing copy or documentation. |
+| [learning-designer](roles/learning-designer.md) | `learning_designer` | content | write | Designs learning objectives, curricula, lesson plans, exercises and assessments; pick it for training or course material where learners must reach measurable outcomes. |
+| [localization-editor](roles/localization-editor.md) | `localization_editor` | content | write | Localizes existing text for a target locale with consistent meaning, terminology and tone; pick it for translation, glossary work and locale-format review. |
+| [plugin-developer](roles/plugin-developer.md) | `plugin_developer` | agent-dev | write | Builds and validates Claude Code plugins and marketplaces and Codex plugins, including manifests, layout and install steps; pick it for packaging and distributing agent extensions. |
+| [skill-author](roles/skill-author.md) | `skill_author` | agent-dev | write | Designs, writes and tests reusable agent skills, including artifact-template skills, for Claude Code and Codex; pick it when a repeated workflow or deliverable should become a skill. |
+| [openai-solution-designer](roles/openai-solution-designer.md) | `openai_solution_designer` | codex-only | read-only | Checks current official OpenAI and Codex documentation to choose features and specify integrations, without editing files; pick it only when OpenAI products, APIs or Codex setup drive the design. |
+| [sites-builder](roles/sites-builder.md) | `sites_builder` | codex-only | write | Owns a Codex Site end to end: builds or edits it, integrates bounded peer assets and prepares publishing for approval; pick it for a new website or existing Site, or when the user names Sites. |
 
-## 구현·운영·Codex 확장
+## Runtime roles
 
-| 역할 | 책임과 대표 산출물 |
-|---|---|
-| [`automation_engineer`](roles/automation-engineer.toml) | 반복 작업 스크립트와 도구 연동을 구현한다. |
-| [`app_operator`](roles/app-operator.toml) | 실제 허용된 앱에서 일회성 UI 작업을 수행하고 상태를 확인한다. |
-| [`devops_engineer`](roles/devops-engineer.toml) | 빌드·배포 설정, CI/CD와 운영 관측을 다룬다. |
-| [`performance_engineer`](roles/performance-engineer.toml) | 응답 시간, 메모리, 렌더링과 처리량 병목을 분석한다. |
-| [`openai_solution_designer`](roles/openai-solution-designer.toml) | 공식 문서에 근거해 OpenAI·Codex 기능 선택과 통합 명세를 만든다. |
-| [`skill_author`](roles/skill-author.toml) | Codex 스킬의 트리거·지침·지원 리소스를 설계하고 검증한다. |
-| [`plugin_developer`](roles/plugin-developer.toml) | Codex 플러그인 구조, 매니페스트와 설치 절차를 만든다. |
+When no role fits, do not force the nearest name. Define a runtime role in the assignment's Role field:
 
-## 독립 검토
+- a kebab-case name that does not clash with the catalog;
+- scope and expertise, and what is out of scope;
+- the deliverable and its format;
+- verification criteria;
+- the inputs it receives and the results it hands to which peers;
+- access: read-only unless it must edit, plus the files it owns.
 
-| 역할 | 책임과 대표 산출물 |
-|---|---|
-| [`qa_engineer`](roles/qa-engineer.toml) | 사용자 시나리오, 테스트와 회귀 검증 결과를 만든다. |
-| [`reviewer`](roles/reviewer.toml) | 코드 변경의 버그, 회귀와 빠진 테스트를 독립 검토한다. |
-| [`security_reviewer`](roles/security-reviewer.toml) | 인증·인가, 입력, 비밀정보와 의존성 위험을 검토한다. |
+Spawn it as a generic agent and paste, above the assignment, the definition and the "Working rules" section of any brief in `roles/` (every brief carries the same working rules).
 
-## 과업에 맞춘 역할 구성
+## Keeping a role
 
-카탈로그에 맞는 역할이 없어도 이름을 억지로 고르지 않는다. 일회성 과업에는 목표, 전문 범위, 산출물, 검증 기준과 동료에게 넘길 입력·결과를 적은 **임시 런타임 역할**을 배정할 수 있다. 반복될 역할이면 기존 역할과의 경계를 확인한 뒤 TOML과 이 목록을 갱신해 **재사용 영속 역할**로 만든다. 어느 경우든 실제 도구와 계정 권한은 별도이며 역할 이름이 이를 부여하지 않는다.
+Keep a runtime role only when you assigned the same one twice or the user asks. Never edit installed copies (plugin caches, agent directories, this skill's files): they are generated and are replaced on the next install or update. Instead propose a new `src/roles/<id>.toml` to the source repository, `yoyowasi/codex-orchestrator-kit`:
+
+```toml
+id = "subject-expert"
+pack = "content"
+description = "One English sentence: what it does and when to pick it."
+access = "read-only"
+instructions = '''
+- One rule per line; do not repeat the common working rules.
+'''
+```
+
+Never set a model in a role file. If the user is working in a clone of the source repository and asks for it, add the file there, run `python scripts/build.py` and `python scripts/build.py --check`, and let the user reinstall; otherwise hand the TOML to the user to submit.

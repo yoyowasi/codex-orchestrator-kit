@@ -1,6 +1,10 @@
 * text=auto
+# Generated files are compared byte for byte (build.py --check), so text stays LF on every OS.
+*.js text eol=lf
+*.json text eol=lf
 *.md text eol=lf
-*.py text eol=lf
 *.mjs text eol=lf
+*.py text eol=lf
 *.toml text eol=lf
 *.yaml text eol=lf
+*.yml text eol=lf

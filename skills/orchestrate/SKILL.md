@@ -1,48 +1,139 @@
 ---
 name: orchestrate
-description: Coordinate an expert team with task-specific roles, available models, skill routing, peer feedback, and verified integration when the user requests orchestration, specialists, or delegated collaboration across development, research, business, analysis, design, writing, or operations.
+description: Coordinate a team of specialist subagents on one larger task. Choose roles from the bundled catalog or define one, pick a model and effort per assignment, route installed skills, run author and reviewer loops, then integrate and verify before reporting. Use when the user asks for a team, specialists, orchestration, parallel or delegated work, or a separate author and reviewer, or when the work splits into two or more independent subtasks on different files or artifacts that need independent verification, in software, research, business, data, documents, content or operations. Do not use for single-file fixes, sequential steps that each depend on the previous result, quick questions or lookups, a single research question one agent can answer, or when the user wants you to do the work yourself.
 ---
 
-# 전문가 팀 오케스트레이터
+# Expert team orchestrator
 
-메인 대화가 목표, 전문가 선택, 모델 배정, 협업과 결과 통합을 맡는다. 개발뿐 아니라 조사·사업·데이터·창작·교육·문서·업무 운영을 다룬다. 사용자의 언어로 소통하며, 팀의 규모보다 실제 산출물과 검증을 우선한다.
+You, the main session, are the orchestrator. You frame the goal, choose roles, models and skills, assign work, coordinate peers, integrate and verify the results, and report. Specialists do only their assigned work. Always answer the user in the user's language; write assignments in it too unless the work needs another language.
 
-## 팀 구성
+## Team or solo
 
-요청의 완료 조건, 사용 가능한 자료·스킬·도구, 기존 작업과 권한을 확인한다. 독립적으로 진행할 의미 있는 하위 작업과 메인이 할 일이 있을 때 전문가를 배정한다. 간단하거나 순차적인 일은 직접 처리한다. 보통 2~3명의 전문가로 시작하되 메인까지 포함하는지 등 현재 도구의 동시 실행 한도를 확인한다.
+Build a team when the work is more than a few quick steps and at least one of these holds:
 
-[역할 목록](references/roles.md)에서 필요한 역할의 TOML만 읽고, [스킬 연결표](references/skill-routing.md)에서 해당 업무에 맞는 설치 스킬을 찾는다. 프로젝트에 동명 역할이 있으면 그 지침과 모델 고정값도 확인한다. 카탈로그에 없는 전문성이 필요하면 역할 목록의 맞춤 역할 구성 절차에 따라 이번 배정의 역할을 만든다. 반복 사용이 필요하거나 사용자가 요청한 경우에만 역할 파일로 영속화한다.
+- Two or more subtasks can proceed independently on separate files, artifacts or questions.
+- A check by someone other than the author materially lowers risk (see the review triggers under Integrate and verify).
+- The user explicitly asks for a team, specialists, parallel work or a separate reviewer.
 
-역할 TOML은 이 스킬이 읽는 지침 자료다. 파일을 추가해도 런타임의 커스텀 에이전트나 계정 권한이 자동 등록되지는 않는다. 이 스킬의 상대 경로는 이 디렉터리를 기준으로 해석하며 플러그인 스킬의 경로는 현재 세션 카탈로그에서 찾는다. 적용 스킬이 작업 소유권이나 위임 범위를 정하면 그 조건으로 팀을 구성한다. 예를 들어 Sites의 체크아웃·Sites 도구·게시·인계는 사이트 소유 에이전트가 수행하고 하위 에이전트는 한정된 자산·조사만 맡는다.
+Work solo, and say so in one line ("Working solo: <reason>"), when:
 
-## 모델 선택
+- it is one subtask or a single-file fix, or roughly ten tool calls or fewer;
+- each step depends on the previous step's result;
+- it is a quick question, explanation or lookup;
+- several workers would have to edit the same file;
+- the user wants you to do it yourself.
 
-첫 배정 전에 [모델 정책](references/models.md)을 읽고, 현재 배정 도구가 지원하는 모델과 설명으로 프론티어·범용(미들)·경량 후보를 그때그때 정한다. 특정 버전·제품군 이름이나 과거 예시를 기본값으로 고정하지 않는다. 같은 등급에서는 현재 권장되는 최신 후속 모델을 우선하되, 작업 적합성과 명시된 품질·비용·사용량 조건에 따라 선택한다. 역할, 모델, 추론 수준, 사용할 스킬을 각각 결정하며 세 등급을 모두 쓸 필요는 없다.
+An explicit request for a team wins over these solo criteria; keep that team minimal, such as one author and one reviewer. Start with two or three specialists and add more only for independent work within the concurrency limit. One agent may cover several roles. Before spawning, state the planned team (roles and models) in one line; if it would exceed a cost or usage limit the user set, ask first.
 
-사용자가 제시한 모델 배치는 기본 선호로 삼고, 오케스트레이터가 작업과 결과를 보고 모델·추론 수준을 자율적으로 선택·재조정한다. 통상적인 변경마다 승인을 묻지 않는다. 다만 “이 모델만”, “변경 금지”처럼 명시한 고정 조건과 비용·사용량 한도는 지킨다. 지원 모델과 추론 수준은 현재 도구 스키마·런타임이 기준이며 실제 생성 도구 인수에 전달한다. 메인 모델은 현재 선택을 유지한다. 스킬이 메인 모델을 자동 변경했다고 말하지 않는다.
+## Procedure
 
-## 배정과 상호작용
+1. **Frame.** Goal, done criteria, deliverables, constraints, working path, request mode (read-only or implement), and the project instructions and gated actions that apply.
+2. **Choose roles** from the catalog in roles.md, or define a runtime role as described there. If an applicable skill defines ownership or delegation scope, build the team on its terms.
+3. **Choose model and effort** for each assignment with models.md.
+4. **Assign** with the template below. Run independent work in parallel; start dependent work only after its inputs are fixed.
+5. **Coordinate.** Peers exchange questions, evidence, drafts and findings directly where their tools allow it; otherwise you relay. You decide scope, shared contracts and ownership, and settle conflicts (collaboration.md).
+6. **Integrate and verify** the actual artifacts.
+7. **Report** with the final report template.
 
-상호 의존, 동료 검토 또는 인계가 있는 팀에는 [협업 프로토콜](references/collaboration.md)을 적용한다. 팀원에게 전체 참고 문서 대신 필요한 역할 지침, 관련 스킬의 절대 경로와 다음 작업 계약을 전달한다.
+## References
 
-- 목표·완료 조건, 필요한 입력과 선행 결과의 버전
-- 소유 파일·산출물·UI 세션, 수정 가능 범위와 공통 계약
-- 모델·추론 수준·선택 이유, 읽어야 할 스킬
-- 협업 상대의 실제 에이전트 경로, 교환할 결과와 검토 시점
-- 검증 방법, 결과·근거·제약의 보고 방식
+Read a reference only when its step needs it.
 
-에이전트를 생성한 뒤 반환된 실제 경로를 필요한 동료에게 알려준다. 유용한 쟁점은 동료끼리 직접 질문·근거·초안·검토 결과를 교환하게 한다. 메인은 범위 변경, 공유 계약과 소유권을 결정한다. 작성자에게 구체적 검토를 돌려보내고 수정된 산출물로 확인한다. 동의 횟수나 대화량을 품질 근거로 삼지 않는다.
+- [references/roles.md](references/roles.md): role catalog, packs, access levels, runtime roles (step 2).
+- [references/models.md](references/models.md): tiers, selection, `model` and `reasoning_effort` (step 3 and every reassignment).
+- [references/skill-routing.md](references/skill-routing.md): which installed skills to name in an assignment.
+- [references/collaboration.md](references/collaboration.md): ownership, message format, review loop, stopping rules, tools; read it when two or more agents hand work to each other.
+- [references/examples.md](references/examples.md): team patterns and one worked example, for unfamiliar kinds of work.
+- `references/roles/<id>.md`: one role's full brief, to paste into a generic agent.
 
-공유 파일과 같은 브라우저 탭·라이브 문서 등 변경 가능한 자원에는 한 명의 담당자를 둔다. 선행 결과를 추측해 후속 작업을 시작하지 않는다. 확정된 공통 계약만으로 진행 가능한 부분은 병렬 수행한다. 역할 수만큼 모두 동시에 실행하거나 대기 중인 에이전트를 늘리지 않는다. 추가 전문가가 필요하면 메인에게 요청하며, 별도로 배정한 범위가 아니면 재귀적으로 팀을 만들지 않는다.
+## Rules that always apply
 
-## 통합과 검증
+- One owner per mutable resource: file, document, sheet, deck, browser tab or UI session, database object, branch. Reviewers report; owners edit. Nobody overwrites or reverts another agent's work.
+- Specialists never build teams. If more expertise is needed, they ask you.
+- Never declare completion from a success report alone. Check the artifacts and the evidence.
+- Roles and skills grant no tools, accounts or permissions.
+- Never claim parallel work, enforced isolation, a model or an effort setting that was not actually applied.
+- Explicit user pins (model, role, tool) and cost or usage limits win. Keep the main session's model; never claim to have changed it.
 
-메인은 실제 결과·수정 내용·실행 증거를 확인한다. 코드에는 관련 동작 검증, 문서·슬라이드에는 렌더링 검토, 데이터에는 원자료 대조와 계산 검증처럼 산출물에 맞는 확인을 수행한다. 필요한 경우 작성자와 다른 전문가가 핵심 가정이나 결과를 독립 검토한다. 재사용 가능한 팀 구성 예시는 [업무별 협업 예시](references/workflows.md)를 필요한 경우에만 읽는다.
+## Assignment template
 
-실제 에이전트의 성공 보고만으로 완료를 선언하지 않는다. 반복 검토는 미해결 결함·새 근거가 있을 때 이어가며, 해결된 쟁점은 종료한다. 최종 답변은 결과, 산출물, 사용한 역할·모델의 핵심 이유, 수행한 검증과 남은 한계를 간결하게 담는다.
+Fill every field; write "none" rather than dropping one. Send the agent only what it needs, not these references.
 
-## 실행 환경
+```text
+Role: <role id, or runtime role: scope, expertise, deliverable>
+Model: <model, effort> (<one-line reason>)
+Goal and done: <outcome; done criteria>
+Working path: <repository or directory>
+Inputs: <files, data, links; prior results with version or commit>
+Access: owns and may edit <files and resources only this agent changes> | read only <paths or artifacts>
+Instructions and skills: <project instruction files and sections that apply; skills to use>
+Mode: read-only | implement
+Approval gates: <gated actions in scope>, not approved: return target, reason, impact, rollback | approved by the user: <exact action, target, scope> | none
+Peers: <name or address>: <what to exchange, and when>
+Verify: <checks to run; what counts as passing>
+Report: result; changed files or evidence; checks run (command, outcome, evidence scope); unverified items
+```
 
-`collaboration` 도구가 있으면 이 대화의 하위 작업에 사용한다. `create_thread`는 사용자가 별도의 새 작업을 명시적으로 요청할 때만 사용한다. `codex-team`을 요청했고 실제 `team_members`·`team_dispatch` 등이 보이면 그 도구의 현재 스키마에 맞춰 배정한다. 과거의 두 모델 제한을 다른 도구에 적용하지 않는다.
+## Approval gates
 
-생성·메시지·모델 선택 기능이 없으면 가능한 기능으로 축소하고 한계를 알린다. 가상의 병렬 실행이나 모델 변경을 주장하지 않는다. 읽기 전용 역할은 도구가 샌드박스를 지원할 때 실제로 적용하며, 지침만 전달한 경우 강제 격리라고 표현하지 않는다. 역할은 새 계정 접근·외부 메시지 발송·게시·배포 권한을 부여하지 않으며 기존 사용자 승인 범위를 유지한다.
+Gated actions: production data writes, deployments, publishing, external messages, account or permission changes, and anything the project's instructions gate.
+
+- Before assigning, list the gated actions in scope in the assignment's approval gates field.
+- Subagents never execute a gated action unless their assignment carries the user's approval for that exact action. Otherwise they return an approval request: target, reason, impact, rollback.
+- You obtain the user's approval as the host and project rules require. Then you decide on your own whether to execute the action directly or reassign it, writing "approved by the user: <exact action, target, scope>" into the new assignment's approval gates field.
+- Preserve the actions, targets and scope the user has already approved; do not ask again for an action within that approval. Approval does not extend to other actions, targets or scope.
+
+## Project context
+
+- Codex agents load AGENTS.md (and any `project_doc_fallback_filenames`) themselves but cannot see this conversation. Give the working path so path-scoped rules can be judged, name the sections that apply, and restate any rule the user gave only in chat. If the project keeps rules in another file, such as CLAUDE.md, name that file and the sections to read in the assignment.
+- Request mode carries over: if the user asked to check, review or explain, every assignment is read-only.
+- Precedence: the user, then project instructions (including their skill routing and approval rules), then skills, then role briefs. Process skills such as TDD or systematic debugging are routed only when the user or project instructions call for them; otherwise verify what the change needs.
+- Every check carries its evidence scope: static, browser, API, database or production. Keep the distinction in your report; "deployed", "pushed" or "HTTP 200" alone does not show that a feature works.
+
+## Running the team
+
+In Codex you coordinate with the session's multi-agent tools.
+
+- **Tools:** v2 sessions expose `collaboration.*` (`spawn_agent`, `send_message`, `followup_task`, `wait_agent`, `list_agents`, `interrupt_agent`); v1 sessions expose `multi_agent_v1.*` (`spawn_agent`, `send_input`, `wait_agent`, `close_agent`, `resume_agent`). The mapping is in collaboration.md. With neither, do the roles yourself in sequence and say that no agents ran.
+- **Peer messages need tools in the child:** in v2 a child gets the collaboration tools only when its model supports multi-agent v2; in v1 children get no agent tools at the default `agents.max_depth = 1`. A child without them reports to you, and you relay its messages to peers.
+- **Registered roles:** if the role appears in `spawn_agent`'s "Available roles" list, pass `agent_type` with that snake_case name and send only the filled-in assignment; its instructions are already applied, so do not paste them again. Otherwise spawn a default agent and paste `references/roles/<id>.md` (kebab-case file name) above the assignment.
+- **Authorization:** a direct invocation of this skill (`$orchestrate`) is the explicit user request the tool descriptions ask for before spawning, setting `agent_type` or choosing a model and effort. Automatic selection of this skill is not; then follow the tool's restrictions and higher-priority instructions. The current tool schema's restrictions win either way, and neither case approves a gated action.
+- **Model and effort:** pass `model` and `reasoning_effort` per models.md. In v2 also pass `fork_turns="none"` with a self-contained assignment, unless the agent needs the whole parent conversation; omitting it means `"all"`. The full `fork_turns` rules are in models.md.
+- **Addresses:** use role-based task names (`backend_1`, `reviewer_1`) and give peers each other's agent path or ID exactly as `spawn_agent` returned it; never guess a path.
+- **Waiting:** in v2, `wait_agent` returns an update summary, not the result; read the delivered messages and the final report. In v1 a completed status may include the final message. Wait only when nothing independent is left, and in short waits so the user is not blocked. In v1, close finished agents with `close_agent`: they hold a concurrency slot until closed.
+- **Concurrency:** confirm the real limit from the config or the error response. `[agents] max_concurrent_threads_per_session = N` (alias `max_threads`) allows N subagents, root excluded; v1 reads the same key and defaults to 6, with nesting depth `agents.max_depth` (default 1). In v2 the same key under `[features.multi_agent_v2]` takes precedence and counts the root; with neither set, v2 allows 3 subagents. v2 has no depth limit, so the no-nested-teams rule is instruction-level.
+- **Read-only truth:** `sandbox_mode = "read-only"` in a role file is advisory. Current Codex source lets spawned agents inherit the parent session's permissions, so treat read-only as instruction-level unless verified on this Codex version; real enforcement needs a read-only parent session.
+- **New threads:** in the Codex app, `mcp__codex_app__create_thread` starts a separate user task (other surfaces name their thread tools differently). Use it only when the user explicitly asks for a new task, never for team members.
+- **codex-team:** `team_members`, `team_dispatch`, `team_wait`, `team_result` and `team_interrupt` come from the optional codex-team launcher. Use them only when they are actually present, following their current schema; their models come from the launcher's configuration.
+
+## Integrate and verify
+
+Check the actual artifacts, diffs and command output yourself, matched to the artifact:
+
+| Artifact | Check |
+|---|---|
+| Code | relevant tests, type-check or build; reproduce the fixed bug; UI changes in a browser |
+| Data, analysis, financial models | recompute key figures from the source; units, totals, sample rows |
+| Documents, slides, PDFs | render; overflow, clipping, fonts, readability; numbers match the source |
+| Research and claims | decisive claims, figures and dates against the cited sources |
+| Configuration, infrastructure | validate or dry-run; deployment stays behind its approval gate |
+| Content, localization, courses | audience, tone, terminology and length against the brief; assessments measure the objectives |
+| Skills, plugins | structure validation and one representative invocation |
+
+Have a role other than the author review when any of these applies: production data, deployment or external-message impact; figures or citations that decide the conclusion; authentication or permission paths; changes across three or more files. Run at most two review rounds; for a third, decide yourself or report the open issue. Report checks you could not run as unverified.
+
+## Final report
+
+Answer in the user's language, in this order:
+
+```text
+<Conclusion in one or two lines>
+Artifacts: <paths, links, commits>
+| Role (agent) | Model (effort) | Why |
+|---|---|---|
+| <role (name)> | <model as actually set> | <one line> |
+Verification: <check: outcome, evidence scope>; unverified: <items>
+Limits and decisions needed: <open risks, approval requests, choices for the user>
+```
+
+If you worked solo, drop the table and say in one line why no team was built.

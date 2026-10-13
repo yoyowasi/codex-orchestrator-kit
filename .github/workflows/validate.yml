@@ -1,4 +1,4 @@
-name: Validate kit
+name: Validate
 
 on:
   push:
@@ -10,17 +10,27 @@ permissions:
 jobs:
   validate:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        # 3.11 is the declared minimum (tomllib); 3.12 covers the current release.
+        python: ['3.11', '3.12']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python -m unittest discover -s tests -p "test_*.py"
-      - run: node --check tools/codex-team/codex-team.mjs
-      - run: node tests/team.test.mjs
+      - name: Generated files match src/
+        run: python scripts/build.py --check
+      - name: Python tests
+        run: python -m unittest discover -s tests -p "test_*.py"
+      - name: Launcher syntax
+        run: node --check extras/codex-team/codex-team.mjs
+      - name: Launcher tests
+        run: node extras/codex-team/team.test.mjs
+      - name: Workflow scripts
+        run: node tests/workflows.test.mjs

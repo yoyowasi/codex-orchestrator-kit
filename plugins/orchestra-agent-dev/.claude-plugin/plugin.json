@@ -1,0 +1,17 @@
+{
+  "name": "orchestra-agent-dev",
+  "version": "2.0.0",
+  "description": "Authoring agent skills and plugins for Claude Code and Codex.",
+  "author": {
+    "name": "yoyowasi"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/yoyowasi/codex-orchestrator-kit",
+  "repository": "https://github.com/yoyowasi/codex-orchestrator-kit",
+  "keywords": [
+    "orchestration",
+    "multi-agent",
+    "subagents",
+    "agent-dev"
+  ]
+}

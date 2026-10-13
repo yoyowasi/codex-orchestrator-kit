@@ -1,0 +1,63 @@
+# Single source of truth for release metadata and role packs.
+# scripts/build.py reads this file; generated outputs must never be edited by hand.
+
+version = "2.0.0"
+repository = "yoyowasi/codex-orchestrator-kit"
+license = "MIT"
+author = "yoyowasi"
+marketplace = "codex-orchestrator-kit"
+# Marketplace description; the Codex UI blurb is [skill] short_description (25 to 64 characters).
+description = "Pick specialists, skills and models for the task, then coordinate peer review and verified integration."
+
+[skill]
+name = "orchestrate"
+display_name = "Expert Team Orchestrator"
+short_description = "Coordinate specialists with peer review and verified results"
+
+# Packs group roles for installation. `core` ships with the skill; others are optional.
+# `platforms` limits where a pack is built. Every role in src/roles must belong to exactly one pack.
+[packs.core]
+description = "Research, design, implementation, review and documentation essentials."
+plugin = "orchestra"
+platforms = ["claude", "codex"]
+color = "blue"
+
+[packs.dev]
+description = "Databases, DevOps, performance, automation, UX and accessibility."
+plugin = "orchestra-dev"
+platforms = ["claude", "codex"]
+color = "green"
+
+[packs.docs]
+description = "Data analysis, documents, PDFs, spreadsheets, presentations and visuals."
+plugin = "orchestra-docs"
+platforms = ["claude", "codex"]
+color = "yellow"
+
+[packs.business]
+description = "Business analysis, finance, product, user insights and operations."
+plugin = "orchestra-business"
+platforms = ["claude", "codex"]
+color = "orange"
+
+[packs.content]
+description = "Content strategy, creative writing, localization and learning design."
+plugin = "orchestra-content"
+platforms = ["claude", "codex"]
+color = "purple"
+
+[packs.agent-dev]
+description = "Authoring agent skills and plugins for Claude Code and Codex."
+plugin = "orchestra-agent-dev"
+platforms = ["claude", "codex"]
+color = "cyan"
+
+[packs.codex-only]
+description = "Roles that depend on Codex/OpenAI-only products."
+platforms = ["codex"]
+
+# Files installed (Codex) or hand-copied (Claude Code) from releases before 2.0.0 that 2.0.0 no
+# longer ships under these names. install.py lists them, and --prune-legacy backs them up and removes them.
+[legacy]
+codex_agents = ["orchestrator.toml", "template-author.toml"]
+claude_agents = ["orchestrator.md", "template-author.md", "openai-solution-designer.md", "sites-builder.md"]

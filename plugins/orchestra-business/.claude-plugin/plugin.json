@@ -1,0 +1,17 @@
+{
+  "name": "orchestra-business",
+  "version": "2.0.0",
+  "description": "Business analysis, finance, product, user insights and operations.",
+  "author": {
+    "name": "yoyowasi"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/yoyowasi/codex-orchestrator-kit",
+  "repository": "https://github.com/yoyowasi/codex-orchestrator-kit",
+  "keywords": [
+    "orchestration",
+    "multi-agent",
+    "subagents",
+    "business"
+  ]
+}

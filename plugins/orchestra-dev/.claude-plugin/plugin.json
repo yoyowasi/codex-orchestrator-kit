@@ -1,0 +1,17 @@
+{
+  "name": "orchestra-dev",
+  "version": "2.0.0",
+  "description": "Databases, DevOps, performance, automation, UX and accessibility.",
+  "author": {
+    "name": "yoyowasi"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/yoyowasi/codex-orchestrator-kit",
+  "repository": "https://github.com/yoyowasi/codex-orchestrator-kit",
+  "keywords": [
+    "orchestration",
+    "multi-agent",
+    "subagents",
+    "dev"
+  ]
+}
