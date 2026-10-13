@@ -1,0 +1,17 @@
+{
+  "name": "orchestra-docs",
+  "version": "2.0.0",
+  "description": "Data analysis, documents, PDFs, spreadsheets, presentations and visuals.",
+  "author": {
+    "name": "yoyowasi"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/yoyowasi/codex-orchestrator-kit",
+  "repository": "https://github.com/yoyowasi/codex-orchestrator-kit",
+  "keywords": [
+    "orchestration",
+    "multi-agent",
+    "subagents",
+    "docs"
+  ]
+}

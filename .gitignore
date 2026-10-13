@@ -12,3 +12,9 @@ team.json
 *.tmp
 .DS_Store
 /dist/
+
+# local working notes (not published)
+.work/
+
+# local Claude Code settings
+.claude/settings.local.json

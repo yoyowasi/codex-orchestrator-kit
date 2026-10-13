@@ -1,0 +1,48 @@
+{
+  "name": "codex-orchestrator-kit",
+  "owner": {
+    "name": "yoyowasi"
+  },
+  "metadata": {
+    "description": "Pick specialists, skills and models for the task, then coordinate peer review and verified integration.",
+    "version": "2.0.0"
+  },
+  "plugins": [
+    {
+      "name": "orchestra",
+      "source": "./plugins/orchestra",
+      "description": "Research, design, implementation, review and documentation essentials.",
+      "version": "2.0.0"
+    },
+    {
+      "name": "orchestra-dev",
+      "source": "./plugins/orchestra-dev",
+      "description": "Databases, DevOps, performance, automation, UX and accessibility.",
+      "version": "2.0.0"
+    },
+    {
+      "name": "orchestra-docs",
+      "source": "./plugins/orchestra-docs",
+      "description": "Data analysis, documents, PDFs, spreadsheets, presentations and visuals.",
+      "version": "2.0.0"
+    },
+    {
+      "name": "orchestra-business",
+      "source": "./plugins/orchestra-business",
+      "description": "Business analysis, finance, product, user insights and operations.",
+      "version": "2.0.0"
+    },
+    {
+      "name": "orchestra-content",
+      "source": "./plugins/orchestra-content",
+      "description": "Content strategy, creative writing, localization and learning design.",
+      "version": "2.0.0"
+    },
+    {
+      "name": "orchestra-agent-dev",
+      "source": "./plugins/orchestra-agent-dev",
+      "description": "Authoring agent skills and plugins for Claude Code and Codex.",
+      "version": "2.0.0"
+    }
+  ]
+}

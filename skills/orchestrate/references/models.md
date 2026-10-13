@@ -1,40 +1,53 @@
-# 작업별 모델 정책
+# Model policy
 
-## 실행 시점의 모델로 후보 구성
+Choose the model and effort for each assignment separately from its role. A role names a responsibility; the model and effort follow the difficulty of this particular piece of work.
 
-매 작업의 첫 배정 전에 **실제로 사용할 하위 에이전트 생성 도구**의 지원 모델, 모델 설명, 추론 수준을 확인한다. 앱의 새 작업 생성 도구, 모델 선택기, API 모델 목록은 서로 다를 수 있다. 다른 도구나 공식 문서에만 있는 모델을 현재 도구의 지원 목록에 자동 합치지 않는다. 지원하지 않는 모델 ID·추론 수준을 추측하지 않는다.
+## Tiers
 
-모델 ID·버전·제품군별 배정표를 영구 기본값으로 두지 않는다. 현재 런타임 설명을 기준으로 아래 세 등급의 후보를 구성하고, 등급이나 후속 관계가 불명확해 선택에 영향을 주면 설치된 `openai-docs` 절차로 현재 공식 안내를 확인한다. 숫자가 크거나 이름이 익숙하다는 이유만으로 성능·등급·가격을 단정하지 않는다. 끝내 확인되지 않으면 설명이 확인된 지원 후보를 쓰거나 도구의 기본 모델을 상속하고, 최신 여부를 확인하지 못했다고 밝힌다.
+Build the candidates for each tier from what the spawn tool offers right now: its model list, descriptions and effort values. Do not add models known only from documentation, memory or another tool, and never guess a model ID or an effort value.
 
-| 선택 등급 | 적합한 배정 | 추론 수준 선택 |
+| Tier | Fits | Effort |
 |---|---|---|
-| 경량 | 범위가 좁고 결과를 쉽게 대조할 수 있는 추출·분류·요약, 반복 형식 검사 | 해당 모델의 지원 범위에서 작업에 충분한 낮은 수준부터 |
-| 범용(미들) | 일반 구현, 문서·슬라이드 제작, 조사 종합, 데이터 처리, 업무 설계 | 해당 모델의 기본 또는 중간 수준부터 |
-| 프론티어 | 복잡한 구조 설계, 상충하는 근거 판단, 원인 불명의 결함, 실패 영향이 큰 검증 | 해당 모델의 지원 범위에서 높은 수준을 검토 |
+| Light | narrow work that is easy to check: extraction, classification, summaries, format checks | the lowest level that is sufficient |
+| General | routine implementation, documents and slides, research synthesis, data processing, process design | the default or a medium level |
+| Frontier | complex architecture, conflicting evidence, defects without a known cause, high-impact verification | high levels |
 
-**같은 등급에서 현재 권장되는 최신 후속 모델을 우선한다.** 이전 세대를 선택할 때는 명시적 사용자 고정, 재현·호환성, 확인된 품질·비용·지연·사용량 조건처럼 작업에 관련된 이유가 있어야 한다. 최신 범용 모델과 이전 버전명을 가진 프론티어·경량 모델을 함께 선택할 수 있으며, 세대 번호를 맞출 필요는 없다. 세 등급을 모두 배정하거나 특정 제품군 이름에 등급을 영구 결합하지 않는다.
+Within a tier prefer the currently recommended, newest successor. Pick an older generation only for a stated reason: a user pin, reproducibility, compatibility, or measured cost, latency or usage limits. Do not infer capability, tier or price from a version number or a familiar name. A team does not need all three tiers, and mixing generations across tiers is fine.
 
-모델 설명과 추론 수준은 이번 배정 도구의 계약을 따른다. 공식 API의 추론 설정을 다른 런타임에 그대로 적용하지 않는다. 최초 배정 때 선택한 실제 모델 ID·등급·이유를 짧게 알린다. 다음 작업에서 다시 후보를 확인하며, 같은 작업 중에는 가용성이나 요구가 달라질 때 갱신한다.
+## Selection
 
-## 선택·대체·인계
+1. Decide by the work's uncertainty, failure impact, verifiability, and speed and cost needs, not by the role title. A researcher extracting tables can run on a light model; one reconciling conflicting sources needs a frontier model.
+2. Start from the lightest combination that meets the quality bar.
+3. User pins win. "Only this model", "do not change it", and stated quality, cost or usage limits are hard constraints. A model the user merely mentions is a preference: you may choose differently, with a one-line reason, and without asking for approval of routine choices.
+4. If a pinned model is unavailable, hold that assignment, tell the user which supported models exist, and continue independent work.
+5. Model diversity is not a goal. Different models that share the same wrong input do not verify each other; recompute, check the source or reproduce instead.
+6. Use only models and providers the runtime already supports. Never install accounts, keys or services to diversify models. Image and audio generation tools are chosen separately from reasoning models.
+7. Keep the main session's model. Change it only when the user asks, and only through a method that actually exists.
 
-1. 사용자가 제시한 모델·역할별 배치는 기본 선호와 출발점으로 해석한다. 이 스킬에서는 오케스트레이터가 실제 과업을 판단해 다른 지원 모델·추론 수준을 고르거나 후속 단계에서 변경할 수 있다. 단순히 모델 이름을 언급했다는 이유로 영구 고정하지 않는다. “이 모델만 사용”, “반드시 고정”, “변경 금지”처럼 명확한 제한과 명시된 품질·비용·사용량 조건은 준수한다.
-2. 역할명이 아니라 이번 작업의 불확실성, 실패 영향, 검증 가능성, 속도·비용 요구로 선택한다. 연구자도 자료 추출에는 경량, 근거 충돌 해석에는 프론티어 후보를 쓸 수 있다. 필요한 품질을 충족할 후보 중 가벼운 조합에서 시작하고 개발 이외의 업무에도 같은 기준을 적용한다.
-3. 사용자가 특정 모델을 필수로 고정했는데 사용할 수 없으면 해당 배정을 보류하고 지원 후보를 알린다. 독립적인 다른 작업은 계속한다. 기본 선호 모델이 미지원이거나 작업에 덜 적합하면 오케스트레이터가 대체 모델을 선택한다. 이유를 짧게 알리되 통상적인 선택·변경에 추가 승인을 요구하지 않는다.
-4. 모델 다양성 자체를 목표로 비용을 늘리지 않는다. 독립 검토에서는 다른 모델을 선택할 수 있지만, 같은 입력의 잘못된 가정을 공유하면 모델이 달라도 검증되지 않는다. 재계산·원문 대조·재현으로 판단한다.
-5. 새 모델·다른 제공자는 연결된 런타임이 명시적으로 지원할 때만 사용한다. 모델 다양화를 위해 별도 API 계정·키·서비스를 자동 설치하지 않는다. 이미지·오디오 생성 도구는 추론 에이전트의 모델 선택과 별개로 취급한다.
+## Reassessment between stages
 
-`collaboration.spawn_agent`에서 모델을 지정할 때는 `model`, `reasoning_effort`와 `fork_turns="none"` 또는 필요한 양의 최근 턴 수를 전달한다. `fork_turns="all"`이나 생략은 부모 모델 상속 방식이므로 모델 재지정과 함께 쓰지 않는다. 최소 배경과 역할 지침을 명시적으로 넣고, 프롬프트에 모델 이름만 적는 방식으로 설정했다고 주장하지 않는다.
+Reassess the next assignment when a stage ends or new evidence appears, not after every small edit.
 
-역할 파일에 모델이 고정돼 있으면 그것이 실제 강제 설정인지 단순 기본값인지 확인하고 런타임 우선순위에 맞춰 선택을 적용한다. 변경이 허용되지 않는 프로젝트 설정을 우회하지 않는다. 이 스킬의 역할 파일은 모델을 고정하지 않는다. 메인 모델은 현재 선택을 유지한다. 사용자가 메인 모델 변경을 요청한 경우에만 실제 가능한 변경 방법을 안내한다.
+- Unexpected complexity, repeated quality problems or conflicting key evidence: hand the work, with the failure evidence, to a stronger model or a higher effort.
+- Structure and cause settled, and only checkable edits left: a lighter model can take the follow-up.
+- Latency or usage pressure: keep strong models for the decisive judgments and lighten independent routine work. Do not claim prices or savings you have not measured.
+- Give each change one sentence with the actual model, for example "frontier model to reconcile conflicting figures across sources". Keep a choice that still fits.
 
-## 진행 중 재판단
+## Handoff on model change
 
-단계가 바뀌거나 새로운 근거가 생겼을 때 다음 배정을 재평가한다. 작은 수정마다 모델을 교체하지는 않는다.
+Do not stop running work only to switch models. When work moves to another model, hand over the latest artifact and its version, the verification results, the failure evidence and the open issues, and record the change in the final report table. Resuming or following up an existing agent keeps its model; a different model needs a new agent.
 
-- 예상보다 복잡한 원인, 반복되는 품질 부족, 핵심 근거 충돌이 드러나면 실패 근거를 정리하고 더 적합한 모델이나 높은 추론 수준에 맡긴다.
-- 구조와 원인이 확정되어 반복 정리·편집·검증 가능한 구현만 남으면 더 가벼운 모델로 후속 작업을 배정할 수 있다.
-- 지연·사용량 제약이 생기면 중요도가 높은 판단에 자원을 남기고 독립적인 단순 작업의 조합을 조정한다. 근거 없는 가격·절감률을 주장하지 않는다.
-- 변경 이유는 “출처 간 수치 충돌을 해석해야 하므로 프론티어 모델로 검토”처럼 실제 모델 ID와 함께 결과에 관련된 한 문장으로 설명한다. 기존 선택이 적합하면 그대로 유지한다.
+## Never claim what was not applied
 
-이미 실행 중인 작업은 모델 전환만을 위해 중단하지 않는다. 재배정이 필요하면 현재 산출물, 검증 결과, 실패 근거와 미해결 쟁점을 보존해 다음 담당자에게 인계한다. `followup_task`는 모델 변경 도구가 아니다. 같은 모델의 후속 작업이면 기존 에이전트를 재사용한다.
+Report the model and effort you actually passed to the spawn tool. If you could not set them (no parameter, a role file or environment setting pins them, the value was rejected), say so. Writing a model name into the prompt sets nothing.
+
+## Setting model and effort
+
+- **Delegation.** Tool descriptions say to omit `model` unless the user explicitly asks. Invoking this skill delegates model and effort choice to you; explicit user pins and cost limits still win.
+- **`model` and `reasoning_effort`** on `spawn_agent` take only values from the tool's current model list and catalog. When tiers or successors are unclear and the choice matters, check current guidance with the `openai-docs` skill; if it stays unclear, use a model whose description is confirmed and say that you could not confirm it is the newest.
+- **Omitting `model`** uses `[agents] default_subagent_model` (and `default_subagent_reasoning_effort`) when configured, otherwise the parent's model. Omission is therefore not always "inherit".
+- **Role files:** a `model` set inside a registered role cannot be overridden at spawn time (the tool marks it "cannot be changed"). This kit's role files never set one; a project's own role might.
+- **History:** in v2, `fork_turns` accepts only `"none"` and `"all"`; omission means `"all"` and a number is treated as `"all"`. Model overrides apply in both cases. Default to `"none"` with a self-contained assignment; use `"all"` only when the agent needs the whole parent conversation. v1 uses `fork_context` instead (v2 rejects it); it defaults to false, and v1 rejects `fork_context=true` together with `agent_type` because a full-history fork inherits the parent's agent type.
+- **Peer messaging:** in v2 a child can message peers only when its model supports multi-agent v2. When an agent must exchange with peers directly, prefer such a model from the list, or plan to relay its messages yourself.
+- `followup_task` and `send_input` are not model switches; they keep the agent's model.
+- The optional codex-team launcher takes its models from its own configuration.

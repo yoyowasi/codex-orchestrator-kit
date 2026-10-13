@@ -1,183 +1,188 @@
-# Codex Orchestrator Kit
+# Orchestrator Kit for Codex and Claude Code
 
-**사용자가 전문가 협업을 요청하면 총괄이 과업에 맞는 역할과 모델을 고르고, 동료 간 검토부터 결과 통합·검증까지 조율하는 Codex 스킬입니다.**
+English | [한국어](README.ko.md)
 
-개발, 조사, 사업 분석, 창작, 교육, 문서·데이터 제작, 업무 운영에 사용할 수 있는 37개 역할 정의를 포함합니다. 현재 설치된 스킬을 과업에 맞게 연결하는 기준과 협업 예시도 제공합니다. Codex 앱·CLI에서 사용하는 `$orchestrate` 스킬과, 별도 Windows CLI 창을 연결하는 `codex-team` 실행기가 함께 들어 있습니다. 개인 제작 도구이며 OpenAI 공식 제품이 아닙니다.
+**An expert-team orchestration skill for Codex and Claude Code that picks the specialists, models and skills a task needs, lets them review each other's work, and verifies the integrated result before reporting.**
 
-## 동작 방식
+It ships 35 role definitions (33 on Claude Code) in installable packs, covering software, research, business, data, documents, content and operations. Codex gets the `$orchestrate` skill and custom agents; Claude Code gets the `orchestra` plugins with the `/orchestra:orchestrate` skill, role subagents and two Workflow scripts. It lives in the `yoyowasi/codex-orchestrator-kit` repository. This is a personal project, not an official OpenAI or Anthropic product.
+
+## What it does
 
 ```mermaid
 flowchart TD
-    U[사용자 목표와 완료 조건] --> O[총괄: 역할·스킬·모델 배정]
-    O --> R[조사·분석 담당]
-    O --> C[제작·구현 담당]
-    R -->|근거·가정 공유| C
-    C -->|초안·쟁점 공유| R
-    R --> V[독립 검토·실제 검증]
-    C --> V
-    V -->|구체적 수정 요청| C
-    V --> O
-    O --> D[통합 산출물과 검증 보고]
+    U[Your goal and done criteria] --> O[Main session: picks roles, models and skills]
+    O --> A[Specialist A]
+    O --> B[Specialist B]
+    A <-->|questions, evidence, drafts| B
+    A --> R[Independent reviewer]
+    B --> R
+    R -->|findings| A
+    R --> O
+    O --> D[Integrated, verified result and report]
 ```
 
-예를 들어 새 기능은 제품 기획, 개발, QA가 협업하고, 사업 제안서는 조사, 재무 모델, 문서 제작, 근거 검토가 협업할 수 있습니다. 동료는 필요한 질문·근거·초안·검토 결과를 직접 주고받고, 총괄은 범위와 공유 파일의 담당자를 결정합니다. 실제 결과를 확인해 수정이 필요하면 작성자에게 돌려줍니다.
+Your main session is the orchestrator. It frames the goal, chooses roles from the catalog (or defines one for the task), picks a model and effort per assignment, routes the skills you have installed, assigns owned files, lets peers exchange findings directly, then checks the actual artifacts and reports what was verified and what was not. Specialists never run gated actions (production data writes, deployments, publishing, external messages, permission changes) on their own: they return an approval request, and only after you approve does the orchestrator run that one action itself or hand it to a specialist with exactly that approval.
 
-역할, 모델, 추론 수준, 사용할 스킬은 별개로 고릅니다. 이 스킬의 역할 TOML에는 모델을 고정하지 않았습니다. 매 작업의 첫 배정 때 실제 하위 에이전트 도구가 지원하는 모델과 설명을 확인해 다음 등급의 후보를 정합니다.
+**When it does not build a team.** It works solo, and says so in one line, when the task is a single-file fix or roughly ten tool calls or fewer, when each step depends on the previous one, for quick questions and lookups, when several workers would have to edit the same file, or when you want it to do the work itself. An explicit request for a team overrides this, but the team stays minimal.
 
-| 선택 등급 | 배정의 출발점 |
-|---|---|
-| 경량 | 범위가 좁은 추출·분류·요약과 반복 점검 |
-| 범용(미들) | 일반 구현, 문서 제작, 분석과 업무 설계 |
-| 프론티어 | 불확실성이 큰 설계, 원인 분석과 중요한 검토 |
+## Quick start: Claude Code
 
-특정 버전이나 제품군 이름을 기본값으로 고정하지 않으며, 같은 등급에서는 현재 권장되는 최신 후속 모델을 우선합니다. 이전 세대는 사용자 고정, 재현·호환성, 확인된 품질·비용·지연·사용량 조건 등의 이유가 있을 때 선택합니다. 등급별 세대 번호를 맞추거나 세 등급을 모두 사용할 필요는 없습니다. 추론 수준도 해당 도구의 현재 지원 범위에서 고르며, 새 근거나 작업 단계에 따라 후속 배정을 바꿀 수 있습니다. 사용자가 제시한 배치는 기본 선호로 반영하지만, “이 모델만”, “변경 금지”처럼 명시한 고정 조건은 지킵니다. 메인 대화의 모델을 특정 모델로 강제하지 않으며 스킬이 이를 자동 변경하지도 않습니다. [모델 정책](skills/orchestrate/references/models.md)에 선택·인계 기준이 있습니다.
-
-## 빠른 시작: 스킬만 설치
-
-Codex의 스킬 설치 기능에 다음과 같이 요청할 수 있습니다.
+In a Claude Code session:
 
 ```text
-$skill-installer https://github.com/yoyowasi/codex-orchestrator-kit/tree/main/skills/orchestrate 에 있는 스킬을 설치해줘.
+/plugin marketplace add yoyowasi/codex-orchestrator-kit
+/plugin install orchestra@codex-orchestrator-kit
+/reload-plugins
 ```
 
-수동으로 설치하려면 저장소의 `skills/orchestrate` 폴더 전체를 개인 스킬 디렉터리 `~/.agents/skills/orchestrate`에 복사합니다. 역할 지침도 스킬 안에 포함되어 있어 별도 전역 역할 등록 없이 읽어 사용할 수 있습니다. 이 TOML들은 지침 자료이며, 폴더에 놓는 것만으로 네이티브 커스텀 에이전트가 자동 등록되지는 않습니다. 생성 도구가 역할 이름을 지원하지 않으면 총괄이 필요한 역할 지침을 작업 배정에 전달합니다.
-
-스킬만 복사하거나 `$skill-installer`로 설치하면 동시 실행 상한은 바뀌지 않습니다. 아래 설치기를 사용하면 상한이 지정되지 않은 환경에 서브에이전트 기본 상한 12개를 설정합니다.
-
-프로젝트에서 새 Codex 대화를 열고 다음처럼 요청합니다.
+`orchestra` is the core plugin: the skill, the core roles and the Workflow scripts. Add packs you will use repeatedly, then run `/reload-plugins` again:
 
 ```text
-$orchestrate 이 프로젝트에 회원가입과 로그인 기능을 만들어줘.
-필요한 전문가와 작업별 모델을 고르고 파일 담당을 나눠
-구현·동료 검토·검증까지 진행해줘.
+/plugin install orchestra-dev@codex-orchestrator-kit
+/plugin install orchestra-business@codex-orchestrator-kit
 ```
 
-개발 외 업무도 같은 방식으로 요청할 수 있습니다.
+Invoke it explicitly or just describe the work:
 
 ```text
-$orchestrate 제공한 고객 의견과 비용 자료로 사업 제안서를 만들어줘.
-사용자 인사이트, 재무 시나리오, 문서 제작과 근거 검토를 나눠 진행해줘.
+/orchestra:orchestrate Add sign-up and login to this project. Pick the specialists and models, split file ownership, then implement, review and verify.
 ```
 
-하위 에이전트의 생성·모델 선택·동료 메시지 기능은 사용하는 Codex 환경에 따라 다릅니다. 스킬이 보이지 않으면 Codex를 다시 시작합니다.
+Roles from packs you did not install still work: the orchestrator runs them in a general-purpose agent with the role's brief. Updating, uninstalling, the script-install alternative and migrating from hand-copied agent files are in [docs/claude-code.md](docs/claude-code.md).
 
-## 역할 별칭까지 설치
+## Quick start: Codex
 
-Python 3.11 이상이 필요합니다. 저장소를 내려받고 루트에서 실행합니다.
+**Skill only.** Ask Codex:
+
+```text
+$skill-installer install https://github.com/yoyowasi/codex-orchestrator-kit/tree/main/skills/orchestrate
+```
+
+Restart Codex if the skill does not appear. This registers no custom agents and leaves `config.toml` alone; every role still works because the orchestrator pastes the role's brief into a default agent.
+
+**Skill, registered roles and a concurrency limit.** Needs Python 3.11 or newer (use `py -3` on Windows or `python3` on macOS/Linux if `python` is not 3.11+):
 
 ```sh
 git clone https://github.com/yoyowasi/codex-orchestrator-kit.git
 cd codex-orchestrator-kit
+python scripts/install.py                       # skill + core roles
+python scripts/install.py --packs dev,business  # core + these packs (list every pack to keep)
+python scripts/install.py --packs all           # every pack, including codex-only
 ```
 
-Windows:
+The installer copies the skill to `~/.agents/skills/orchestrate`, the roles of the selected packs to `$CODEX_HOME/agents` (default `~/.codex`), and sets `[agents] max_concurrent_threads_per_session = 12` in `config.toml` when no limit is set. If `config.toml` exists but has no limit yet, the first run stops and lists it as a conflict; rerun with `--force`, which backs it up before adding the setting. Use `--dry-run` to preview the plan, conflicts included. All options are in [docs/codex.md](docs/codex.md).
 
-```powershell
-py -3 scripts/install.py
-```
-
-macOS / Linux:
-
-```sh
-python3 scripts/install.py
-```
-
-설치기는 스킬을 `~/.agents/skills/orchestrate`, 역할 별칭 37개를 `$CODEX_HOME/agents`에 복사합니다. `CODEX_HOME`이 없으면 `~/.codex`를 사용합니다. 같은 Codex 홈의 `config.toml`에 동시 실행 상한이 없으면 **메인 에이전트를 제외한 서브에이전트 12개**를 기본값으로 설정합니다. 기존 상한과 다른 설정, 계정 인증 정보는 보존합니다.
-
-| 옵션 | 동작 |
-|---|---|
-| `--dry-run` | 파일을 쓰지 않고 설치 대상 확인 |
-| `--force` | 내용이 다른 기존 파일을 백업한 뒤 교체 |
-| `--skills-dir PATH` | 스킬 설치 디렉터리 지정 |
-| `--codex-home PATH` | 역할과 CLI 상태의 Codex 홈 지정 |
-| `--max-subagents N` | 서브에이전트 상한을 양의 정수 N으로 지정하며, 기존 상한이 있으면 교체 |
-| `--with-cli` | Windows용 여러 창 실행기도 설치 |
-| `--bin-dir PATH` | `codex-team.cmd`를 둘 디렉터리 지정 |
-
-기존 파일과 내용이 다르면 기본적으로 설치를 멈춥니다. 업데이트는 내용을 확인한 뒤 `--force`를 사용합니다. 백업 경로와 원래 경로 목록이 출력됩니다. 이전에 `~/.codex/skills/orchestrate`에 설치했다면 `--skills-dir`로 그 스킬 디렉터리를 지정해 동명 스킬이 중복 등록되지 않게 합니다.
-
-### 동시 실행 상한
-
-설치기가 설정하는 값은 다음과 같습니다.
-
-```toml
-[agents]
-max_concurrent_threads_per_session = 12
-```
-
-기존 `agents.max_concurrent_threads_per_session` 또는 이전 이름인 `agents.max_threads`가 있으면 기본 설치는 그 값을 유지합니다. 상한을 직접 바꾸려면 다음처럼 실행합니다. `--force`는 변경되는 기존 파일을 백업한 뒤 교체하며, 기존 `config.toml`에 기본값을 추가할 때도 필요합니다.
-
-```powershell
-py -3 scripts/install.py --max-subagents 12 --force
-```
-
-기존 설치 위치가 `~/.codex/skills`라면 위 명령에도 `--skills-dir`로 해당 경로를 지정합니다. 먼저 `--dry-run --force`를 함께 사용하면 파일을 쓰지 않고 변경 계획을 확인할 수 있습니다.
-
-설정 파일의 주석과 기존 내용을 보존하기 위해 일반 `[agents]` 섹션과 루트의 `agents.<키>` 형태를 수정합니다. `agents = {...}` 같은 인라인 테이블 등 자동 수정이 어려운 형식에서 값 변경이 필요하면 파일을 쓰기 전에 중단합니다. 이 경우 기존 값을 유지하면서 일반 `[agents]` 섹션으로 정리한 뒤 다시 실행합니다.
-
-12는 항상 생성할 인원수가 아니라 동시에 열 수 있는 서브에이전트의 설정 상한입니다. 실제 배정 수와 적용 시점은 현재 Codex 실행 환경에서 확인합니다. 변경된 상한이 보이지 않으면 새 대화에서 확인하거나 Codex를 재시작합니다. 별도 `codex-team` 실행기가 여는 창 개수는 이 설정으로 바뀌지 않습니다. [공식 하위 에이전트 설정](https://learn.chatgpt.com/docs/agent-configuration/subagents)을 참고하세요.
-
-## 여러 CLI 창으로 보기
-
-`codex-team`은 스킬의 내장 하위 에이전트 협업과 **별도인 Windows 실행기**입니다. Windows에서 Node.js 22 이상, Python 3.11 이상, 설치·로그인된 Codex CLI가 필요합니다.
-
-```powershell
-py -3 scripts/install.py --with-cli
-codex-team start C:\projects\my-app
-```
-
-기본 구성은 총괄·프론트엔드·백엔드·QA의 네 창입니다. 총괄 `orchestrator` 창에 요청을 입력하면 연결된 로컬 도구가 이미 열린 작업자 창에 작업을 전달합니다. 창을 여는 것만으로 작업은 시작하지 않습니다. `codex-team` 명령을 찾지 못하면 설치기가 출력한 실행기 전체 경로로 실행하거나 해당 디렉터리를 사용자 PATH에 추가합니다. 처음 연결하는 MCP 도구의 사용 승인이 표시될 수 있습니다.
-
-**이 실행기의 현재 모델 지원은 `gpt-6-sol`/medium과 `gpt-6-astra`/high 두 조합입니다.** 총괄 창은 Astra High로 시작하고 작업자는 Sol Medium으로 시작하며, `team_dispatch`에서 이 두 조합 사이를 작업별로 선택합니다. 내장 하위 에이전트 스킬의 실행 시점 모델 선택 정책이 Windows 실행기의 코드에 자동 적용되는 것은 아닙니다. 실행기는 별도 내장 하위 에이전트를 추가 생성하지 않습니다. [여러 창 실행기 사용법](docs/cli-team.md)을 참고하세요.
-
-## 포함된 역할
-
-| 분야 | 역할 |
-|---|---|
-| 총괄·설계 | `orchestrator`, `architect` |
-| 조사·의사결정 | `researcher`, `evidence_reviewer`, `business_analyst`, `user_insights_analyst`, `financial_modeler`, `product_manager` |
-| 업무 운영 | `operations_designer`, `automation_engineer`, `app_operator`, `devops_engineer` |
-| 콘텐츠·교육 | `content_strategist`, `creative_writer`, `localization_editor`, `learning_designer`, `technical_writer` |
-| 문서·데이터 | `data_analyst`, `document_producer`, `spreadsheet_modeler`, `pdf_specialist`, `presentation_designer`, `template_author` |
-| 시각·웹 | `visual_creator`, `ux_designer`, `accessibility_auditor`, `sites_builder`, `frontend_developer` |
-| 서버·시스템 | `backend_developer`, `database_engineer`, `performance_engineer` |
-| Codex 확장 | `openai_solution_designer`, `skill_author`, `plugin_developer` |
-| 코드 품질 | `qa_engineer`, `reviewer`, `security_reviewer` |
-
-역할이 직접 대응하는 전용 스킬을 가져야 하는 것은 아닙니다. 문서, PDF, 스프레드시트, 발표 자료, 비트맵 이미지, Sites, 스킬·플러그인 제작 등은 현재 설치된 스킬을 작업 조건에 맞춰 연결합니다. 열려 있는 Excel 앱과 독립 스프레드시트 파일, 기존 Site와 일반 웹 저장소처럼 적용 범위가 다른 도구는 [스킬 연결 기준](skills/orchestrate/references/skill-routing.md)에서 구분합니다. [상세 역할 목록](skills/orchestrate/references/roles.md)에는 역할별 책임과 산출물이 있습니다.
-
-## 구조
+Then, in a project:
 
 ```text
-skills/orchestrate/          독립 설치 가능한 스킬
-  SKILL.md                  팀 구성·배정·통합 지침
-  agents/openai.yaml        Codex 표시용 메타데이터
-  references/              모델·협업·스킬 연결·업무 예시
-  references/roles/         총괄 포함 37개 역할 정의
-scripts/install.py          스킬·역할·선택적 실행기 설치
-tools/codex-team/            Windows CLI 팀 실행기와 로컬 MCP 서버
-tests/                      설치와 작업 배정 로직 검증
-docs/cli-team.md             실행기 사용법과 동작 범위
+$orchestrate Add sign-up and login to this project. Pick the specialists and models, split file ownership, then implement, review and verify.
 ```
 
-## 검증
+## Packs
 
-계정이나 모델 호출 없이 실행할 수 있는 검증입니다.
+| Pack | Claude Code plugin | Roles |
+|---|---|---|
+| `core` (always installed) | `orchestra` | researcher, architect, frontend-developer, backend-developer, qa-engineer, reviewer, security-reviewer, evidence-reviewer, technical-writer |
+| `dev` | `orchestra-dev` | database-engineer, devops-engineer, performance-engineer, automation-engineer, ux-designer, accessibility-auditor |
+| `docs` | `orchestra-docs` | data-analyst, document-producer, pdf-specialist, spreadsheet-modeler, presentation-designer, visual-creator |
+| `business` | `orchestra-business` | business-analyst, financial-modeler, product-manager, user-insights-analyst, operations-designer, app-operator |
+| `content` | `orchestra-content` | content-strategist, creative-writer, localization-editor, learning-designer |
+| `agent-dev` | `orchestra-agent-dev` | skill-author, plugin-developer |
+| `codex-only` | none (Codex only) | openai-solution-designer, sites-builder |
 
-```powershell
-py -3 -m unittest discover -s tests -p "test_*.py"
-node --check tools/codex-team/codex-team.mjs
-node tests/team.test.mjs
+Runtime names: Claude Code plugin agents are `orchestra:<id>` or `orchestra-<pack>:<id>` (bare `<id>` with the script install); Codex roles use snake_case (`evidence_reviewer`). Read-only roles: architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer. Read-shell roles (may run tests, told not to edit): reviewer, security-reviewer. See [Limits](#limits) for what that really enforces.
+
+## Example requests
+
+Prefix with `/orchestra:orchestrate` in Claude Code or `$orchestrate` in Codex, or simply ask for a team.
+
+```text
+Add per-key rate limiting (100 requests per minute) to our public API and have someone
+check it for security before I merge. Don't deploy anything.
 ```
 
-macOS / Linux에서는 `py -3` 대신 `python3`를 사용합니다. 테스트는 설치 대상 분리, 기본 상한 12개와 기존 설정 보존, 충돌 시 기존 파일 보존, 업데이트 백업, 경로 소유권 충돌, 모델 배정 인수를 확인합니다. 실제 모델의 판단 품질이나 모든 계정에서의 실행을 보장하지는 않습니다.
+```text
+Find why the nightly import job got three times slower since last week. Read-only:
+report the cause with evidence and a fix plan; do not change code.
+```
 
-## 현재 동작 범위
+```text
+Turn the attached customer feedback and cost data into a business proposal. Split user
+insights, financial scenarios and the document, and have someone check every figure.
+```
 
-- 스킬은 Codex가 제공하는 하위 에이전트 도구를 사용합니다. 생성·모델 선택·동료 메시지와 읽기 전용 샌드박스 지원 여부는 현재 실행 환경에 따릅니다.
-- 여러 창 실행기는 Windows용이며 Codex CLI **0.156.0**에서 세션 생성·재연결과 MCP 연결을 확인했습니다. App Server의 WebSocket 인터페이스는 실험적이므로 CLI 업데이트 시 재확인이 필요할 수 있습니다.
-- 여러 창의 작업자는 같은 프로젝트 디렉터리를 공유합니다. 파일 담당 예약은 협업 규칙이며 작업자별 파일 접근을 강제로 격리하는 기능은 아닙니다.
-- 실행기는 로컬 `127.0.0.1` 서버를 사용합니다. 이를 외부 네트워크에 공개하는 용도로 설계하지 않았습니다.
-- 총괄의 모델 선택, 작업 배정, 검토를 지원하며 파일 변경·명령 실행 등의 Codex 승인 절차를 유지합니다. 역할은 외부 계정 접근, 메시지 발송 또는 게시 권한을 새로 부여하지 않습니다.
+```text
+Localize our onboarding guide into Japanese and German, keep the glossary consistent,
+and give me a list of wording decisions.
+```
 
-공식 참고: [스킬](https://learn.chatgpt.com/docs/build-skills), [하위 에이전트](https://learn.chatgpt.com/docs/agent-configuration/subagents), [App Server](https://learn.chatgpt.com/docs/app-server).
+## How collaboration works
+
+- **Claude Code.** The main session spawns named subagents with the Agent tool; named peers message each other with SendMessage, and parallel writers in a git repository can each get a worktree. `/orchestra:team-review` (read-only code review where each finding must survive a refutation attempt) and `/orchestra:team-research` (sourced research with every claim checked against its source) are fixed-round Workflow scripts, used only when you ask for them. If you have enabled agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), named agents start as teammates instead. Details: [docs/claude-code.md](docs/claude-code.md).
+- **Codex.** The orchestrator uses the session's multi-agent tools (`spawn_agent`, `send_message`/`followup_task` or `send_input`, `wait_agent`), passes `agent_type` for registered roles, and otherwise pastes the role brief into a default agent. It chooses `model` and `reasoning_effort` per assignment. Details: [docs/codex.md](docs/codex.md).
+
+## Limits
+
+| Topic | Claude Code | Codex |
+|---|---|---|
+| `read-only` roles | Enforced for installed role agents: the tool allowlist is Read, Grep, Glob, WebFetch, WebSearch and SendMessage (no shell, no MCP tools). Instruction-level when the role runs from its brief in a general-purpose agent | Advisory: role files set `sandbox_mode = "read-only"`, but current Codex source gives spawned agents the parent session's permissions |
+| `read-shell` roles | Partial: Write, Edit and NotebookEdit are removed, but Bash and PowerShell remain, so "do not modify files" is an instruction | Advisory, as above |
+| `write` roles | Only the file ownership written into the assignment | Same |
+| No nested teams | Agent tool removed from every role; a general-purpose fallback agent keeps it unless you limit spawn depth | Instruction only (v2 has no depth limit) |
+| Install method | Use the plugins or `install.py --target claude`, never both: both register the same skill and agents | Use `$skill-installer` (`~/.codex/skills/orchestrate`) or `install.py` (`~/.agents/skills/orchestrate`), not both: they write different folders, so the skill would be registered twice |
+| Uninstall | Plugin uninstall, or `install.py --target claude --uninstall` | `install.py --uninstall` removes recorded, unchanged files and keeps the `config.toml` limit |
+| Cost | Every specialist, workflow stage and teammate has its own context; teams use far more tokens than a solo session | Same |
+
+## Upgrading from v1
+
+**Codex.** v1 installed all 37 roles without an install manifest. Run once from a 2.0 checkout:
+
+```sh
+python scripts/install.py --packs all --force
+```
+
+This replaces the v1 files with 2.0 files (backups go to `$CODEX_HOME/agent-backups/orchestrator-kit-<time>/`) and starts tracking them. Add `--prune-legacy` (recommended) to also back up and remove what 2.0 no longer ships: `orchestrator.toml` and `template-author.toml` in `agents/`, and the old `references/roles/*.toml` and `references/workflows.md` in the skill folder; without it Codex keeps listing the old `orchestrator` and `template_author` roles, and the installer lists those files under `legacy_files`. Add `--with-cli` if you used the v1 launcher. `--dry-run` previews any of these commands. To keep only the core roles, run `python scripts/install.py --force --prune-legacy` instead. If v1 lived in `~/.codex/skills/orchestrate`, add `--skills-dir ~/.codex/skills` so the skill is not registered twice.
+
+**Claude Code.** v1 had no Claude Code install. If you copied its files into `~/.claude/agents` or `~/.claude/skills/orchestrate` by hand, back them up and remove them before installing the plugins, or every role appears twice. See [docs/claude-code.md](docs/claude-code.md#migrating-from-manually-copied-files).
+
+**What changed in 2.0:** skill and role text is English (the orchestrator still answers in your language); 35 roles in packs, with `core` installed by default; `orchestrator` is no longer a role (your main session orchestrates) and `template-author` merged into `skill-author`; Claude Code plugins and Workflow scripts; manifest-based update, prune and uninstall; the `codex-team` launcher moved to `extras/codex-team` with configurable models. Full list: [CHANGELOG.md](CHANGELOG.md).
+
+## Repository layout
+
+```text
+src/                     single source: manifest, skill text, role definitions, workflows
+scripts/build.py         generates every platform file from src/
+scripts/install.py       installer for Codex, and for Claude Code without plugins
+skills/orchestrate/      generated Codex skill ($skill-installer path)
+codex/agents/            generated Codex custom agents
+plugins/                 generated Claude Code plugins, one per pack
+.claude-plugin/          generated Claude Code marketplace
+extras/codex-team/       optional Windows multi-window launcher (Codex only)
+tests/                   build, install and workflow tests
+docs/                    platform guides and the generator contract
+```
+
+Generated files are committed and never edited by hand: edit `src/`, then run `python scripts/build.py`. The contract is in [docs/architecture.md](docs/architecture.md).
+
+## Verification
+
+No account or model call is needed:
+
+```sh
+python scripts/build.py --check
+python -m unittest discover -s tests -p "test_*.py"
+node --check extras/codex-team/codex-team.mjs
+node extras/codex-team/team.test.mjs
+node tests/workflows.test.mjs
+claude plugin validate .    # optional, needs the Claude Code CLI
+```
+
+These check generated-file drift, the installer (packs, conflicts, backups, manifest, pruning, config editing), the launcher logic and the workflow scripts' syntax. They do not measure how well a model orchestrates.
+
+## Optional: codex-team launcher
+
+[extras/codex-team](extras/codex-team/README.md) opens the coordinator and each worker as separate Codex CLI windows. It is optional, Windows-only, Codex-only and experimental; the skill does not need it.
+
+## License
+
+[MIT](LICENSE). Orchestrator Kit for Codex and Claude Code is not an official OpenAI or Anthropic product.
