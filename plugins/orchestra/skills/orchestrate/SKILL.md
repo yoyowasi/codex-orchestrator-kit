@@ -81,7 +81,7 @@ Gated actions: production data writes, deployments, publishing, external message
 - Before assigning, list the gated actions in scope in the assignment's approval gates field.
 - Subagents never execute a gated action unless their assignment carries the user's approval for that exact action. Otherwise they return an approval request: target, reason, impact, rollback.
 - You obtain the user's approval as the host and project rules require. Then you decide on your own whether to execute the action directly or reassign it, writing "approved by the user: <exact action, target, scope>" into the new assignment's approval gates field.
-- One approval covers one action.
+- Preserve the actions, targets and scope the user has already approved; do not ask again for an action within that approval. Approval does not extend to other actions, targets or scope.
 
 ## Project context
 

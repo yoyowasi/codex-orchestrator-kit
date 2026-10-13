@@ -637,6 +637,16 @@ def _is_link(path: Path) -> bool:
                                           and getattr(info, "st_reparse_tag", 0) == junction)
 
 
+def _check_directory_links(paths, root: Path) -> None:
+    directories = [root / generated for generated in GENERATED_ROOTS]
+    directories.extend((root / path).parent for path in paths)
+    for directory in directories:
+        while directory != root:
+            if _is_link(directory):
+                raise BuildError(f"refusing to follow directory link: {directory}")
+            directory = directory.parent
+
+
 def _generated_files(root: Path) -> set[str]:
     """Every file (or link) currently inside the generated roots, as repo-relative POSIX paths."""
     found = set()
@@ -667,8 +677,9 @@ def _prune_empty_dirs(root: Path) -> None:
 
 def check(outputs: dict[str, bytes], root: Path) -> list[str]:
     """Paths that are missing, differ from `outputs`, or are stale inside the generated roots."""
-    root = Path(root)
+    root = Path(root).resolve()
     _check_paths(outputs)
+    _check_directory_links(outputs, root)
     drift = {path for path, data in outputs.items()
              if _is_link(root / path) or not (root / path).is_file() or (root / path).read_bytes() != data}
     drift |= _generated_files(root) - outputs.keys()
@@ -677,8 +688,9 @@ def check(outputs: dict[str, bytes], root: Path) -> list[str]:
 
 def write(outputs: dict[str, bytes], root: Path) -> list[str]:
     """Write changed outputs, delete stale files inside the generated roots only; return touched paths."""
-    root = Path(root)
+    root = Path(root).resolve()
     _check_paths(outputs)
+    _check_directory_links(outputs, root)
     changed = []
     for path in sorted(_generated_files(root) - outputs.keys()):
         (root / path).unlink()  # also removes a directory link itself, never its target
@@ -710,6 +722,7 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     try:
         outputs = render(root / "src")
+        _check_directory_links(outputs, root)
         stale = _generated_files(root) - outputs.keys()  # files the build does not produce: it deletes them
         if args.check:
             drift = check(outputs, root)

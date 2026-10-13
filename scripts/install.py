@@ -652,6 +652,11 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
             else:
                 kept.append(str(path))
                 carried[t].append(entry)
+    if 'codex' in targets and recorded_skills and skills_dir != recorded_skills:
+        if any(Path(entry['path']).is_relative_to(recorded_skills / SKILL)
+               for entry in carried['codex']):
+            raise ValueError('Cannot change --skills-dir while modified files remain in the previous skills directory. '
+                             'Back up and restore or remove those files, then rerun with the new directory.')
     # Role files no install manifest tracks (a v1 install, or copied by hand) that carry the name of
     # a role outside the selected packs: this run neither updates nor removes them unless asked to.
     unmanaged = []
@@ -705,6 +710,11 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
                          "release's roles. Rerun with --with-cli to replace it, or delete it and its "
                          'codex-team.cmd shim yourself.')
     removing = {path for path, _, _ in removals}
+    for path, t, _ in removals:
+        resolved = path.resolve()
+        if not allowed(t)(resolved) or (path.name == 'codex-team.cmd' and resolved != path):
+            raise ValueError(f'{path} resolves outside its installation location; '
+                             'remove or update the directory link yourself before removing files.')
     for directory, pattern, names, read_name in guards:
         _guard_role_names(directory, pattern, names, read_name, removing)
 

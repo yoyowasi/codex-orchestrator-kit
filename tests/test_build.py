@@ -542,6 +542,43 @@ class WriteCheckTests(BuildTestCase):
         self.assertEqual((self.repo / "README.md").read_bytes(), b"keep README.md\n")
         self.assertFalse((self.root / "outside.txt").exists())
 
+    def test_directory_links_are_rejected_before_any_write_or_cleanup(self):
+        cases = [("codex/agents", "codex/agents/reviewer.toml"),
+                 ("skills", "skills/orchestrate/SKILL.md"),
+                 ("plugins/orchestra/agents", "plugins/orchestra/agents/reviewer.md")]
+        for index, (relative, output) in enumerate(cases):
+            with self.subTest(link=relative):
+                root = self.root / f"linked-repo-{index}"
+                outside = self.root / f"outside-{index}"
+                link = root / relative
+                link.parent.mkdir(parents=True)
+                outside.mkdir()
+                victim = outside / Path(output).relative_to(relative)
+                victim.parent.mkdir(parents=True, exist_ok=True)
+                victim.write_bytes(b"keep external file\n")
+                external_stale = outside / "old.txt"
+                external_stale.write_bytes(b"keep external stale file\n")
+                stale = root / ".claude-plugin/old.json"
+                stale.parent.mkdir()
+                stale.write_bytes(b"keep until preflight succeeds\n")
+                if sys.platform == "win32":
+                    made = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(outside)],
+                                          capture_output=True)
+                    if made.returncode != 0:
+                        self.skipTest("cannot create a junction here")
+                else:
+                    link.symlink_to(outside, target_is_directory=True)
+                for action in (build.check, build.write):
+                    with self.assertRaisesRegex(build.BuildError, "directory link"):
+                        action({output: b"generated replacement\n"}, root)
+                    self.assertEqual(victim.read_bytes(), b"keep external file\n")
+                    self.assertEqual(external_stale.read_bytes(), b"keep external stale file\n")
+                    self.assertEqual(stale.read_bytes(), b"keep until preflight succeeds\n")
+                if relative in ("codex/agents", "skills"):
+                    with self.assertRaisesRegex(build.BuildError, "directory link"):
+                        build.write({}, root)
+                    self.assertTrue(stale.exists())
+
     def test_cli(self):
         script = str(REPO / "scripts/build.py")
 

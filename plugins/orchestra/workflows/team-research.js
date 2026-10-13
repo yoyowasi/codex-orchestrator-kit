@@ -145,6 +145,10 @@ const results = await pipeline(
     log(`Sub-question ${i + 1}: ${found.claims.length} claim(s) to verify`)
     return parallel(found.claims.map((c, j) => async () => {
       const v = await roleAgent('evidence-reviewer', verifyPrompt(c, sq), { label: `verify#${i + 1}.${j + 1}`, phase: 'Verify', schema: VERDICT }).catch(() => null)
+      if (v && v.status === 'partial' && !(v.correctedClaim || '').trim()) {
+        v.status = 'unverified'
+        v.note = `partial verdict has no nonempty correctedClaim: ${v.note}`
+      }
       return { ...c, subQuestion: i + 1, status: v ? v.status : 'unverified', note: v ? v.note : 'verifier failed or was skipped', correctedClaim: (v && v.correctedClaim) || '' }
     })).then(claims => ({ claims, gaps: found.gaps }))
   },

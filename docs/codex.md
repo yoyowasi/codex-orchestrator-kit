@@ -97,7 +97,7 @@ Direct peer messages need the tools in the child, not only in the main session. 
 
 ## Model policy
 
-- **Invoking the skill delegates model choice.** Codex's tool descriptions say to omit `model` unless the user asks; invoking `$orchestrate` is that request. The orchestrator picks `model` and `reasoning_effort` per assignment from the tool's current model list, by tier (light, general, frontier) and by the difficulty of that piece of work, not by the role title.
+- **Model choice follows the current tool's restrictions.** The orchestrator sets `model` and `reasoning_effort` only when the user's explicit delegation or applicable higher-priority instructions permit it; automatically selecting this skill is not explicit user delegation. When permitted, it chooses from the tool's current model list by tier (light, general, frontier) and by the difficulty of that piece of work, not by the role title.
 - **Your pins and limits win.** "Only this model", "do not change it" and cost or usage limits are hard constraints. A model you merely mention is a preference.
 - **Omitting `model` is not always "inherit".** When `[agents] default_subagent_model` (and `default_subagent_reasoning_effort`) is set in `config.toml`, a spawn without `model` uses it; otherwise it uses the parent's model.
 - **Role files never pin a model.** A `model` inside a registered role file cannot be overridden at spawn time, so this kit's roles set none. A project's own role file might; the orchestrator then reports that it could not choose.

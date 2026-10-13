@@ -1,4 +1,4 @@
-// Static checks for the Claude Code Workflow scripts generated into plugins/orchestra/workflows.
+// Static checks for generated Claude Code Workflows and mocked execution of workflow sources.
 // Workflow scripts run as an async function body (top-level await and return), so `node --check`
 // cannot parse them; compile each body with AsyncFunction instead. Run: node tests/workflows.test.mjs
 import test from 'node:test';
@@ -36,6 +36,54 @@ for (const name of files) {
     assert.doesNotMatch(source, /Date\.now|Math\.random|\brequire\(|^import\s|\bprocess\./m);
   });
 }
+
+test('research only synthesizes supported or narrowed partial claims', async t => {
+  const { body } = readMeta(fs.readFileSync(path.join(ROOT, 'src', 'workflows', 'team-research.js'), 'utf8'));
+  const run = new AsyncFunction('args', 'agent', 'parallel', 'pipeline', 'phase', 'log', body);
+  const cases = [
+    { name: 'missing correction', status: 'partial', kept: false },
+    { name: 'empty correction', status: 'partial', correctedClaim: '', kept: false },
+    { name: 'whitespace correction', status: 'partial', correctedClaim: ' \t\n ', kept: false },
+    { name: 'narrowed partial', status: 'partial', correctedClaim: 'Feature X is supported in version 2.', kept: true },
+    { name: 'supported', status: 'supported', kept: true },
+    { name: 'unsupported', status: 'unsupported', kept: false },
+  ];
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const claim = { claim: 'Feature X is supported in every version.', url: 'https://example.com/release-notes', date: '2026-10-13', confidence: 'high' };
+      const verdict = { status: item.status, note: 'The source only mentions version 2.' };
+      if (Object.hasOwn(item, 'correctedClaim')) verdict.correctedClaim = item.correctedClaim;
+      let synthesisPrompt;
+      const agent = async (prompt, options) => {
+        if (options.label === 'plan') return { subQuestions: [{ question: 'Which versions support Feature X?', evidence: 'release notes' }] };
+        if (options.label.startsWith('research#')) return { claims: [claim], gaps: [] };
+        if (options.label.startsWith('verify#')) return verdict;
+        assert.equal(options.label, 'synthesize');
+        synthesisPrompt = prompt;
+        return 'mock answer';
+      };
+      const parallel = tasks => Promise.all(tasks.map(task => task()));
+      const pipeline = (items, ...stages) => Promise.all(items.map(async (item, i) => {
+        let value = item;
+        for (const stage of stages) value = await stage(value, item, i);
+        return value;
+      }));
+      const result = await run('Which versions support Feature X?', agent, parallel, pipeline, () => {}, () => {});
+      assert.equal(result.claims.length, item.kept ? 1 : 0);
+      assert.equal(result.dropped.length, item.kept ? 0 : 1);
+      const verified = synthesisPrompt.split('Verified claims (cite by number):\n')[1].split('\n\nResearch gaps:')[0];
+      if (item.kept) {
+        assert.equal(result.claims[0].status, item.status);
+        assert.ok(verified.includes(item.correctedClaim || claim.claim));
+      } else {
+        assert.equal(verified, '(none)');
+        assert.equal(result.dropped[0].status, item.status === 'partial' ? 'unverified' : item.status);
+        assert.ok(result.dropped[0].note.includes('The source only mentions version 2.'));
+        if (item.status === 'partial') assert.match(result.dropped[0].note, /correct/i);
+      }
+    });
+  }
+});
 
 function markdownFiles(start) {
   if (!fs.existsSync(start)) return [];

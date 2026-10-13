@@ -625,6 +625,70 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result['targets']['codex']['skill'], str(custom.resolve() / 'orchestrate'))
         self.assertFalse((self.root / 'default-skills').exists())
 
+    def test_changing_skills_directory_with_modified_files_is_refused_before_writing(self):
+        self.install()
+        customized = self.skills / 'orchestrate/SKILL.md'
+        customized.write_bytes(customized.read_bytes() + b'\nLocal customization\n')
+        before = {str(path): path.read_bytes() for path in self.root.rglob('*') if path.is_file()}
+        new_skills = self.root / 'new-skills'
+        for force in (False, True):
+            with self.subTest(force=force):
+                with self.assertRaisesRegex(ValueError, 'modified files.*previous skills directory'):
+                    self.install(skills=new_skills, force=force)
+                self.assertFalse(new_skills.exists())
+                self.assertEqual(before, {str(path): path.read_bytes()
+                                         for path in self.root.rglob('*') if path.is_file()})
+        self.assertIn(str(customized.resolve()), self.install(uninstall=True)['kept_modified'])
+
+    def test_changing_unmodified_skills_directory_can_rerun_and_uninstall(self):
+        self.install()
+        new_skills = self.root / 'new-skills'
+        self.install(skills=new_skills)
+        self.assertFalse((self.skills / 'orchestrate').exists())
+        self.assertEqual(module.install(self.home, repo=self.repo)['changed'], 0)
+        module.install(self.home, repo=self.repo, uninstall=True)
+        self.assertFalse((new_skills / 'orchestrate').exists())
+
+    def test_uninstall_and_prune_refuse_parent_links_before_removing_files(self):
+        for target in ('codex', 'claude'):
+            for prune in (False, True):
+                with self.subTest(target=target, prune=prune):
+                    base = self.root / f'{target}-{prune}'
+                    home, skills = base / 'home', base / 'skills'
+                    options = dict(target=target, repo=self.repo, claude_home=home)
+                    module.install(home, skills, **options)
+                    agents, shared = home / 'agents', base / 'shared-agents'
+                    agents.rename(shared)
+                    if prune:
+                        # A legacy file is untracked, so this exercises the prune removal route.
+                        extension = 'toml' if target == 'codex' else 'md'
+                        legacy = shared / f'orchestrator.{extension}'
+                        legacy.write_text('User-owned legacy file', encoding='utf-8')
+                        if target == 'claude':
+                            manifest = self.repo / 'src/manifest.toml'
+                            manifest.write_text(RELEASE + '\nclaude_agents = ["orchestrator.md"]\n',
+                                                encoding='utf-8')
+                        (home / 'orchestrator-kit/install-manifest.json').unlink()
+                    if os.name == 'nt':
+                        import _winapi
+                        _winapi.CreateJunction(str(shared), str(agents))
+                    else:
+                        agents.symlink_to(shared, target_is_directory=True)
+                    try:
+                        before = {path.name: path.read_bytes() for path in shared.iterdir()}
+                        with self.assertRaisesRegex(ValueError, 'resolves outside'):
+                            module.install(home, skills, **options, uninstall=True, prune_legacy=prune)
+                        self.assertEqual(before, {path.name: path.read_bytes() for path in shared.iterdir()})
+                        self.assertTrue((skills / 'orchestrate/SKILL.md').exists()
+                                        if target == 'codex' else (home / 'skills/orchestrate/SKILL.md').exists())
+                    finally:
+                        if not agents.exists():
+                            pass
+                        elif os.name == 'nt':
+                            agents.rmdir()
+                        else:
+                            agents.unlink()
+
     def test_existing_directories_survive_uninstall(self):
         self.skills.mkdir()
         (self.home / 'agents').mkdir(parents=True)
