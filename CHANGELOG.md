@@ -27,10 +27,10 @@ A rewrite for both Codex and Claude Code. Upgrade steps are in the README under 
 - Skill text, role instructions, launcher messages and the README are in English. The orchestrator still answers in the user's language.
 - 35 roles (33 on Claude Code). Role descriptions exist in one place, and the role catalog in `references/roles.md` is generated from them.
 - The Codex installer installs only the `core` roles unless `--packs` selects more, and later runs reuse the installed packs and launcher choice.
-- Codex model policy: invoking the skill delegates model and effort choice to the orchestrator; omitting `model` uses `[agents] default_subagent_model` when it is set; role files never pin a model. Explicit user pins and cost limits still win.
+- Codex model policy: a direct invocation of the skill (`$orchestrate`) delegates the choice and later reassessment of subagent model and effort to the orchestrator, without approval for routine choices; automatic selection of the skill does not. Explicit user pins, cost limits and the tool's current restrictions still win, and the delegation never approves a gated action. Omitting `model` uses `[agents] default_subagent_model` when it is set; role files never pin a model.
 - Codex collaboration guidance covers both v2 (`collaboration.*`) and v1 (`multi_agent_v1.*`) tools, uses registered roles through `agent_type`, and explains which concurrency keys include the main agent.
 - Process skills (test-driven development, systematic debugging, verification-before-completion, brainstorming) are routed only when the user or project instructions call for them.
-- Specialists return an approval request (target, reason, impact, rollback) for gated actions instead of executing them; one approval covers one action.
+- Specialists return an approval request (target, reason, impact, rollback) for gated actions instead of executing them. An approval covers the actions, targets and scope the user approved, is not asked for again within them, and does not extend beyond them.
 - `tools/codex-team` moved to `extras/codex-team` as an optional, Windows-only, Codex-only experimental launcher. `docs/cli-team.md` became `extras/codex-team/README.md`, and the launcher tests moved to `extras/codex-team/team.test.mjs`.
 - `.gitattributes` keeps every generated text type at LF line endings.
 
@@ -45,7 +45,10 @@ A rewrite for both Codex and Claude Code. Upgrade steps are in the README under 
 
 - Access claims match enforcement: Claude Code `read-only` roles use a real tool allowlist without a shell, `read-shell` roles keep a shell so their no-edit rule is an instruction, and Codex `sandbox_mode` is advisory because current Codex source gives spawned agents the parent session's permissions.
 - Specialists may carry out a gated action only when their assignment states the user's approval for that exact action; otherwise they return an approval request.
-- `fork_turns` guidance matches the current Codex behavior: only `"none"` and `"all"`, omission means `"all"`, and model overrides apply in both cases.
+- `fork_turns` guidance matches the current Codex behavior: only `"none"` and `"all"`, omission means `"all"`, and a full-history fork inherits the parent's model and effort, so model and effort are set only with `"none"`.
+- The build rejects directory links and Windows junctions at generated roots or along output paths before it writes or deletes anything.
+- The installer refuses to change `--skills-dir` while modified files remain in the previous skills directory, and refuses to remove files whose path resolves outside the installation location through a directory link.
+- `/orchestra:team-research` treats a `partial` verdict without a nonempty corrected claim as unverified: the claim leaves the verified, citable claims and reaches the synthesis only in the list of claims that failed verification.
 - Registered Codex roles no longer get their instructions pasted a second time.
 - Role names are rendered for each platform (snake_case in Codex, kebab-case in Claude Code) instead of being mixed.
 - Skill routing no longer assumes Codex-only skills on Claude Code.

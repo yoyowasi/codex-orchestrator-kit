@@ -21,7 +21,7 @@ flowchart TD
     O --> D[Integrated, verified result and report]
 ```
 
-Your main session is the orchestrator. It frames the goal, chooses roles from the catalog (or defines one for the task), picks a model and effort per assignment, routes the skills you have installed, assigns owned files, lets peers exchange findings directly, then checks the actual artifacts and reports what was verified and what was not. Specialists never run gated actions (production data writes, deployments, publishing, external messages, permission changes) on their own: they return an approval request, and only after you approve does the orchestrator run that one action itself or hand it to a specialist with exactly that approval.
+Your main session is the orchestrator. It frames the goal, chooses roles from the catalog (or defines one for the task), picks a model and effort per assignment, routes the skills you have installed, assigns owned files, lets peers exchange findings directly, then checks the actual artifacts and reports what was verified and what was not. Specialists never run gated actions (production data writes, deployments, publishing, external messages, permission changes) on their own: they return an approval request, and only after you approve does the orchestrator run the approved action itself or hand it to a specialist with exactly that approval. The approval covers what you approved (action, target, scope) and nothing beyond it.
 
 **When it does not build a team.** It works solo, and says so in one line, when the task is a single-file fix or roughly ten tool calls or fewer, when each step depends on the previous one, for quick questions and lookups, when several workers would have to edit the same file, or when you want it to do the work itself. An explicit request for a team overrides this, but the team stays minimal.
 
@@ -119,7 +119,7 @@ and give me a list of wording decisions.
 ## How collaboration works
 
 - **Claude Code.** The main session spawns named subagents with the Agent tool; named peers message each other with SendMessage, and parallel writers in a git repository can each get a worktree. `/orchestra:team-review` (read-only code review where each finding must survive a refutation attempt) and `/orchestra:team-research` (sourced research with every claim checked against its source) are fixed-round Workflow scripts, used only when you ask for them. If you have enabled agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), named agents start as teammates instead. Details: [docs/claude-code.md](docs/claude-code.md).
-- **Codex.** The orchestrator uses the session's multi-agent tools (`spawn_agent`, `send_message`/`followup_task` or `send_input`, `wait_agent`), passes `agent_type` for registered roles, and otherwise pastes the role brief into a default agent. It chooses `model` and `reasoning_effort` per assignment. Details: [docs/codex.md](docs/codex.md).
+- **Codex.** The orchestrator uses the session's multi-agent tools (`spawn_agent`, `send_message`/`followup_task` or `send_input`, `wait_agent`), passes `agent_type` for registered roles, and otherwise pastes the role brief into a default agent. When you invoke `$orchestrate` directly, it chooses and reassesses `model` and `reasoning_effort` per assignment; when Codex selects the skill automatically, it sets them only when you allow it. Details: [docs/codex.md](docs/codex.md).
 
 ## Limits
 
