@@ -58,7 +58,7 @@ Each side states the point in dispute, its evidence and how the question could b
 
 ## Concurrency
 
-Start with two or three agents. Never spawn one agent per catalog role. Reuse an existing agent for a same-model follow-up when its context helps. Find the platform limit below and do not guess how finished or interrupted agents free capacity.
+Start with one to three agents. Never spawn one agent per catalog role. Reuse an existing agent for a same-model follow-up when its context helps. Find the platform limit below and do not guess how finished or interrupted agents free capacity.
 
 <!-- @claude -->
 ## Claude Code tools

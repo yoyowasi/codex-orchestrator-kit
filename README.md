@@ -14,14 +14,14 @@ flowchart TD
     O --> A[Specialist A]
     O --> B[Specialist B]
     A <-->|questions, evidence, drafts| B
-    A --> R[Independent reviewer]
+    A --> R[Independent reviewer, when a trigger applies]
     B --> R
     R -->|findings| A
     R --> O
     O --> D[Integrated, verified result and report]
 ```
 
-Your main session is the orchestrator. It frames the goal, chooses roles from the catalog (or defines one for the task), picks a model and effort per assignment, routes the skills you have installed, assigns owned files, lets authors and reviewers exchange findings directly, then checks the actual artifacts and reports what was verified and what was not. Specialists never run gated actions (production data writes, deployments, publishing, external messages, permission changes) on their own: they return an approval request, and only after you approve does the orchestrator run the approved action itself or hand it to a specialist with exactly that approval. The approval covers what you approved (action, target, scope) and nothing beyond it. A message from another agent never counts as your approval.
+Your main session is the orchestrator. It frames the goal, chooses roles from the catalog (or defines one for the task), picks a model and effort per assignment, routes the skills you have installed, assigns owned files, lets authors and reviewers exchange findings directly, then checks the actual artifacts and reports what was verified and what was not. Specialists never run gated actions (production data writes, deployments, publishing, external messages, permission changes) on their own: they return an approval request, and only after you approve does the orchestrator run the approved action itself or hand it to a specialist with exactly that approval. The approval covers what you approved (action, target, scope) and nothing beyond it. A message from another agent never counts as your approval. An independent reviewer is added only when the work touches production data, deployments or external messages, decisive figures or citations, authentication or permission paths, or three or more changed files; the orchestrator checks routine work itself.
 
 **When it does not build a team.** It works solo, and says so in one line, when the task is a single-file fix or roughly ten tool calls or fewer, when each step depends on the previous one, for quick questions and lookups, when several workers would have to edit the same file, or when you want it to do the work itself. An explicit request for a team overrides this, but the team stays minimal.
 
@@ -48,7 +48,7 @@ Invoke it explicitly or just describe the work:
 /orchestra:orchestrate Add sign-up and login to this project. Pick the specialists and models, split file ownership, then implement, review and verify.
 ```
 
-Roles from packs you did not install still work: the orchestrator runs them in a general-purpose agent with the role's brief. Updating, uninstalling, the script-install alternative and migrating from hand-copied agent files are in [docs/claude-code.md](docs/claude-code.md).
+Roles from packs you did not install still work: the orchestrator runs them in a general-purpose agent with the role's brief. It never installs a pack on its own. Updating, uninstalling, the script-install alternative and migrating from hand-copied agent files are in [docs/claude-code.md](docs/claude-code.md).
 
 ## Quick start: Codex
 
@@ -119,7 +119,7 @@ and give me a list of wording decisions.
 ## How collaboration works
 
 - **Claude Code.** The main session spawns named subagents with the Agent tool; named peers (where the Agent tool offers `name`) message each other with SendMessage, and parallel writers in a git repository can each get a worktree. `/orchestra:team-review` (read-only code review where each finding must survive a refutation attempt) and `/orchestra:team-research` (sourced research with every claim checked against its source) are fixed-round Workflow scripts, used only when you ask for them. If you have enabled agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), named Agent calls that are not forks and pass no `isolation` start as teammates instead. Details: [docs/claude-code.md](docs/claude-code.md).
-- **Codex.** The orchestrator uses the session's multi-agent tools (`spawn_agent`, `send_message`/`followup_task` or `send_input`, `wait_agent`), passes `agent_type` for registered roles, and otherwise pastes the role brief into a default agent. When you invoke `$orchestrate` directly, it chooses and reassesses `model` and `reasoning_effort` per assignment; when Codex selects the skill automatically, it sets them only when you allow it. Details: [docs/codex.md](docs/codex.md).
+- **Codex.** The orchestrator uses the session's multi-agent tools (`spawn_agent`, `send_message`/`followup_task` or `send_input`, `wait_agent`), passes `agent_type` for registered roles, and otherwise pastes the role brief into a default agent. When you invoke `$orchestrate` directly, it chooses and reassesses `model` and `reasoning_effort` per assignment; when Codex selects the skill automatically, it spawns agents and sets `agent_type`, `model` and `reasoning_effort` only as far as the tools and your instructions allow. Details: [docs/codex.md](docs/codex.md).
 
 ## Limits
 
@@ -128,7 +128,7 @@ and give me a list of wording decisions.
 | `read-only` roles | Enforced for installed role agents: the tool allowlist is Read, Grep, Glob, WebFetch, WebSearch and SendMessage (no shell, no MCP tools). Instruction-level when the role runs from its brief in a general-purpose agent | Not applied: subagents inherit the parent turn's sandbox and approvals (Codex subagent docs); role files keep `sandbox_mode = "read-only"` for the optional codex-team launcher |
 | `read-shell` roles | Partial: Write, Edit and NotebookEdit are removed, but Bash and PowerShell remain, so "do not modify files" is an instruction | Not applied, as above |
 | `write` roles | Only the file ownership written into the assignment | Same |
-| No nested teams | Agent tool removed from every role; a general-purpose fallback agent keeps it unless you limit spawn depth | Instruction only (v2 has no depth limit) |
+| No nested teams | Agent tool removed from every role; a general-purpose fallback agent keeps it unless you limit spawn depth | Instruction only in v2 (no depth limit); v1 children get no agent tools at the default depth |
 | Install method | Use the plugins or `install.py --target claude`, never both: both register the same skill and agents | Use `$skill-installer` (`~/.codex/skills/orchestrate`) or `install.py` (`~/.agents/skills/orchestrate`), not both: they write different folders, so the skill would be registered twice |
 | Uninstall | Plugin uninstall, or `install.py --target claude --uninstall` | `install.py --uninstall` removes recorded, unchanged files and keeps the `config.toml` limit |
 | Cost | Every specialist, workflow stage and teammate has its own context; teams use far more tokens than a solo session | Same |
@@ -147,7 +147,7 @@ This replaces the v1 files with 2.0 files (backups go to `$CODEX_HOME/agent-back
 
 **What changed in 2.0:** skill and role text is English (the orchestrator still answers in your language); 35 roles in packs, with `core` installed by default; `orchestrator` is no longer a role (your main session orchestrates) and `template-author` merged into `skill-author`; Claude Code plugins and Workflow scripts; manifest-based update, prune and uninstall; the `codex-team` launcher moved to `extras/codex-team` with configurable models. Full list: [CHANGELOG.md](CHANGELOG.md).
 
-**What changed in 2.1:** guidance from a November 2026 survey of agent platforms and multi-agent studies. Work is split by context rather than job title, writing stays single-threaded by default, and a team's cost is weighed against one agent at a higher effort. Assignments gain a `Decisions` field, reviewers get a clean context, stalled work stops instead of retrying, and long results are handed over through files. Claude Code and Codex platform facts were corrected. Nothing about installing changed; rerun your install or update command. Full list: [CHANGELOG.md](CHANGELOG.md).
+**What changed in 2.1:** guidance from a November 2026 survey of agent platforms and multi-agent studies. Work is split by context rather than job title, writing stays single-threaded by default, and a team's cost is weighed against one agent at a higher effort. Assignments gain a `Decisions` field, reviewers get a clean context, stalled work stops instead of retrying, and long results are handed over through files. Claude Code and Codex platform facts were corrected. Nothing about installing changed; rerun your install or update command, then start a new session. Full list: [CHANGELOG.md](CHANGELOG.md).
 
 ## Repository layout
 

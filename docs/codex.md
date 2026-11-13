@@ -68,13 +68,13 @@ $orchestrate Add sign-up and login to this project. Pick the specialists and mod
 $orchestrate Turn the attached customer feedback and cost data into a business proposal. Split user insights, financial scenarios and the document, and have someone check every figure.
 ```
 
-You can also describe the work without `$orchestrate`; Codex picks the skill when the request matches its description. The orchestrator states the planned team and models in one line before spawning, or says "Working solo" with a reason.
+You can also describe the work without `$orchestrate`; Codex picks the skill when the request matches its description. Automatic selection is not the explicit request that the multi-agent tools ask for before spawning, setting `agent_type` or choosing a model and effort, so the orchestrator then goes only as far as the tools and your higher-priority instructions allow, which can mean working solo. Invoke `$orchestrate` directly when you want a team. The orchestrator states the planned team and models in one line before spawning, and asks first if that would exceed a cost or usage limit you set, or says "Working solo" with a reason.
 
 ## Packs and `agent_type`
 
 Packs are listed in the [README](../README.md#packs). `core` is always installed; `--packs all` adds `dev`, `docs`, `business`, `content`, `agent-dev` and `codex-only`.
 
-Every installed role is a Codex custom agent. Registered roles appear in `spawn_agent`'s "Available roles" list under their snake_case names (`evidence_reviewer`, `backend_developer`). For those, the orchestrator passes `agent_type` and sends only the filled-in assignment, because the role's instructions are already applied. Roles in a project's own `.codex/agents` are registered too.
+Every installed role is a Codex custom agent. Registered roles appear in `spawn_agent`'s "Available roles" list under their snake_case names (`evidence_reviewer`, `backend_developer`). For those, the orchestrator passes `agent_type` and sends only the filled-in assignment, because the role's instructions are already applied. Roles in a project's own `.codex/agents` are registered too. The orchestrator never installs a pack itself; it suggests rerunning the installer only when the missing roles will be reused.
 
 ### Roles that are not registered
 
@@ -97,7 +97,7 @@ Direct peer messages need the tools in the child, not only in the main session. 
 
 ## Model policy
 
-- **Invoking `$orchestrate` directly delegates model choice.** The orchestrator then chooses and later reassesses each subagent's `model` and `reasoning_effort` without asking you to approve routine choices. When Codex selects the skill automatically, that is not a delegation: the orchestrator sets them only when you or higher-priority instructions allow it, and otherwise omits them. Either way it chooses from the tool's current model list by tier (light, general, frontier) and by the difficulty of that piece of work, not by the role title, within the tool's current restrictions. The delegation never approves a gated action such as a deployment or an external message.
+- **Invoking `$orchestrate` directly delegates model choice.** The orchestrator then chooses and later reassesses each subagent's `model` and `reasoning_effort` without asking you to approve routine choices. When Codex selects the skill automatically, that is not a delegation: the orchestrator sets them only when you or higher-priority instructions allow it, and otherwise omits them. Either way it chooses from the tool's current model list by tier (light, general, frontier) and by the difficulty of that piece of work, not by the role title, within the tool's current restrictions. For independent pieces of a larger job it starts workers one tier below the orchestrator and keeps the judgments that decide the result on the strongest model in play. The delegation never approves a gated action such as a deployment or an external message.
 - **Your pins and limits win.** "Only this model", "do not change it" and cost or usage limits are hard constraints. A model you merely mention is a preference.
 - **Omitting `model` is not always "inherit".** When `[agents] default_subagent_model` (and `default_subagent_reasoning_effort`) is set in `config.toml`, a spawn without `model` uses it; otherwise it uses the parent's model.
 - **Role files never pin a model.** A `model` inside a registered role file cannot be overridden at spawn time, so this kit's roles set none. A project's own role file might; the orchestrator then reports that it could not choose.
@@ -125,11 +125,11 @@ How Codex counts:
 
 The installer looks only at `[agents]`. If you set a limit under `[features.multi_agent_v2]`, that value still wins in v2 sessions.
 
-The limit is a ceiling, not a team size; the orchestrator starts with two or three specialists. v2 has no depth limit, so "specialists never build teams" is an instruction there. Open a new session or restart Codex if a changed limit does not show. The optional launcher's window count is not affected by this setting.
+The limit is a ceiling, not a team size; the orchestrator starts with one to three specialists. v2 has no depth limit, so "specialists never build teams" is an instruction there. Open a new session or restart Codex if a changed limit does not show. The optional launcher's window count is not affected by this setting.
 
 ## `sandbox_mode` is not applied to subagents
 
-Role files with `access = "read-only"` or `"read-shell"` (architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer, reviewer, security-reviewer) set `sandbox_mode = "read-only"`. Subagents inherit the parent turn's sandbox and approvals, and the Codex subagent docs state that `sandbox_mode` in a custom agent file does not override the parent configuration or create a separate read-only sandbox. Treat "read-only" as an instruction. For real enforcement, run the parent session itself in Codex's read-only sandbox. A child that needs an approval it cannot surface fails and returns the error to the parent.
+Role files with `access = "read-only"` or `"read-shell"` (architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer, reviewer, security-reviewer) set `sandbox_mode = "read-only"`. Subagents inherit the parent turn's sandbox and approvals, and the Codex subagent docs state that `sandbox_mode` in a custom agent file does not override the parent configuration or create a separate read-only sandbox. Treat "read-only" as an instruction. For real enforcement, run the parent session itself in Codex's read-only sandbox. A child that needs an approval it cannot surface fails and returns the error to the parent; the orchestrator treats that as the agent's approval request and brings it to you instead of retrying around it.
 
 Where the setting is applied, such as in the optional codex-team launcher, it is real: the read-shell roles (reviewer, security-reviewer) may still run commands, but tests or builds that write caches, coverage or build output fail or ask for approval there. Give such checks to a write role or run them in the main session.
 

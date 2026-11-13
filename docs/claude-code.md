@@ -39,7 +39,7 @@ claude plugin install orchestra@codex-orchestrator-kit
 claude plugin install orchestra-dev@codex-orchestrator-kit --scope project
 ```
 
-Install only the packs whose roles you reuse. Every installed agent's description is loaded into each session, and a role from a missing pack still runs as a general-purpose agent with that role's brief.
+Install only the packs whose roles you reuse. Every installed agent's description is loaded into each session, and a role from a missing pack still runs as a general-purpose agent with that role's brief. The orchestrator never installs a pack itself; it suggests the install command only when the missing roles will be reused.
 
 ## Update
 
@@ -84,7 +84,7 @@ python scripts/install.py --target claude --uninstall      # remove what it inst
 
 `--packs` replaces the previous selection, so list every pack you want to keep; without `--packs` a rerun keeps the packs installed before. The installer stops when a file it did not install differs from the release; review the file, then rerun with `--force` to back it up and replace it. `--dry-run` shows the whole plan, including such conflicts, without writing. `--target all` installs for Codex and Claude Code in one run. The full option list is in [codex.md](codex.md#install-options).
 
-If `~/.claude/agents` did not exist before, restart Claude Code once so it notices the new directory.
+If `~/.claude/agents` did not exist before, restart Claude Code once so it notices the new directory. A session that already used the skill can keep the text it loaded, so start a new session after an update.
 
 **Use either the plugins or the script install, never both.** Both register the same skill and roles, so with both you get `/orchestrate` and `/orchestra:orchestrate`, and every role twice (`reviewer` and `orchestra:reviewer`). To switch, uninstall one way first.
 
@@ -182,7 +182,7 @@ A general-purpose agent that runs a role from a missing pack has the general-pur
 
 ## Nesting
 
-The Agent tool is removed from every role, so specialists cannot build their own teams; only the main session spawns agents. A general-purpose fallback agent keeps the Agent tool. By default subagents may nest up to three levels below the main session; set `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` to turn nesting off entirely.
+The Agent tool is removed from every installed role, so specialists cannot build their own teams; only the main session spawns agents. A general-purpose fallback agent keeps the Agent tool, so there the no-team rule is an instruction. By default subagents may nest up to three levels below the main session; set `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` to turn nesting off entirely.
 
 ## Worktree isolation
 
@@ -190,7 +190,7 @@ In a git repository, when several agents write code in parallel, the orchestrato
 
 ## Model and effort
 
-- The orchestrator picks a tier per assignment (light, general, frontier) from the models the Agent tool currently offers, and passes `model` as an alias the tool accepts, such as `haiku`, `sonnet`, `opus` or `fable`, plus `effort` from `low` to `max`. It places `fable` and other aliases by the description the tool gives, without assuming an alias is the newest model on every provider. The per-call `effort` needs Claude Code v2.1.292 or later, and `CLAUDE_CODE_EFFORT_LEVEL` overrides it.
+- The orchestrator picks a tier per assignment (light, general, frontier) from the models the Agent tool currently offers, and passes `model` as an alias the tool accepts, such as `haiku`, `sonnet`, `opus` or `fable`, plus `effort` from `low` to `max`. It places `fable` and other aliases by the description the tool gives, without assuming an alias is the newest model on every provider. For independent pieces of a larger job it starts workers one tier below the orchestrator and keeps the judgments that decide the result on the strongest model in play. The per-call `effort` needs Claude Code v2.1.292 or later, and `CLAUDE_CODE_EFFORT_LEVEL` overrides it.
 - An omitted `effort` follows `CLAUDE_CODE_SUBAGENT_EFFORT` (v2.1.316 or later) or, for a subagent on a different model from the main session, that model's saved or default level (v2.1.317 or later), so the report shows it as "default". Where the Agent tool allows `effort` only when you or your instructions name a level, the orchestrator sets it only then.
 - Claude Code uses the `model` passed on the call, then the agent definition's model, then `CLAUDE_CODE_SUBAGENT_MODEL`, then the main session's model. The role agents set no model, so omitting `model` gives `CLAUDE_CODE_SUBAGENT_MODEL` when set, otherwise the main session's model. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` makes the environment setting win over the passed model; the orchestrator reports that it could not choose when that is active.
 - It never uses a fork for a model assignment, because a fork inherits the main conversation, prompt and model.
@@ -202,7 +202,8 @@ In a git repository, when several agents write code in parallel, the orchestrato
 - The skill splits work by context rather than job title, keeps writing single-threaded by default, and tries one agent at a higher effort before adding agents for a problem that is only hard. Every split re-reads its shared inputs, so a large common input multiplies the cost.
 - Each subagent, workflow stage and teammate has its own context window, so a team costs several times a solo session. Agent teams cost the most.
 - `/orchestra:team-review` runs one scope agent, three lens agents and one verifier per finding. `/orchestra:team-research` runs one planner, one researcher per sub-question (3 to 6), one verifier per claim (up to 9 for `quick`, 25 for `standard`, 48 for `deep`) and one writer.
-- The orchestrator starts with two or three specialists, reuses agents when their context helps, and stops at two review rounds per artifact.
+- The orchestrator starts with one to three specialists, reuses agents when their context helps, and stops at two review rounds per artifact.
+- Concurrent subagents are capped by `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20, Claude Code v2.1.217 or later). The skill treats that as a ceiling, not a team size.
 - Installing only the packs you use keeps agent descriptions out of every session's context.
 
 ## Troubleshooting
