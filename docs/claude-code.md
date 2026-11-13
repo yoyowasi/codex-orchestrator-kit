@@ -144,7 +144,7 @@ Before spawning, the orchestrator states the planned team and models in one line
 
 ### Named subagents and SendMessage (default)
 
-The orchestrator spawns each specialist with the Agent tool, giving it a unique `name` such as `backend-1` or `reviewer-1`. Agents that were named at spawn can message each other with SendMessage, so an author and a reviewer exchange findings directly while the orchestrator decides scope, ownership and conflicts. A SendMessage to a finished agent resumes it with its full history; the skill allows at most two resumes before handing the work to a fresh agent. Independent specialists are started together, and subagents normally run in the background and report back when they finish.
+The orchestrator spawns each specialist with the Agent tool, giving it a unique `name` such as `backend-1` or `reviewer-1` when the Agent tool offers that parameter; without it, the orchestrator relays messages between agents. Agents that were named at spawn can message each other with SendMessage, so an author and a reviewer exchange findings directly while the orchestrator decides scope, ownership and conflicts. A SendMessage to a finished agent resumes it with its full history; the skill allows at most two resumes before handing the work to a fresh agent. Independent specialists are started together, and subagents normally run in the background and report back when they finish.
 
 ### Workflow scripts
 

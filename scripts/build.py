@@ -46,9 +46,9 @@ ACCESS_NOTES = {
     "codex": {
         "write": "may edit files inside the assignment.",
         "read-shell": "may read, search and run checks such as tests or static analysis, but must not "
-                      "modify files (`sandbox_mode = \"read-only\"`, advisory).",
+                      "modify files (an instruction: subagents inherit the parent's sandbox).",
         "read-only": "may only read and search; no file changes and no commands that change state "
-                     "(`sandbox_mode = \"read-only\"`, advisory).",
+                     "(an instruction: subagents inherit the parent's sandbox).",
     },
 }
 CLAUDE_COLORS = frozenset({"red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan"})

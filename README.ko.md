@@ -118,15 +118,15 @@ Claude Code에서는 `/orchestra:orchestrate`, Codex에서는 `$orchestrate`를 
 
 ## 협업 방식
 
-- **Claude Code.** 메인 세션이 Agent 도구로 이름 붙인 서브에이전트를 만들고, 이름이 있는 동료끼리 SendMessage로 직접 소통합니다. git 저장소에서 여러 작업자가 동시에 코드를 쓰면 각자 워크트리를 줄 수 있습니다. `/orchestra:team-review`(각 지적이 반박 시도를 통과해야 하는 읽기 전용 코드 리뷰)와 `/orchestra:team-research`(모든 주장을 출처와 대조하는 조사)는 정해진 단계로 도는 Workflow 스크립트이며 요청할 때만 씁니다. 에이전트 팀(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`)을 켜 두었다면 이름 붙인 에이전트가 팀원으로 시작합니다. 자세한 내용: [docs/claude-code.md](docs/claude-code.md).
+- **Claude Code.** 메인 세션이 Agent 도구로 이름 붙인 서브에이전트를 만들고, 이름이 있는 동료끼리(Agent 도구가 `name`을 지원할 때) SendMessage로 직접 소통합니다. git 저장소에서 여러 작업자가 동시에 코드를 쓰면 각자 워크트리를 줄 수 있습니다. `/orchestra:team-review`(각 지적이 반박 시도를 통과해야 하는 읽기 전용 코드 리뷰)와 `/orchestra:team-research`(모든 주장을 출처와 대조하는 조사)는 정해진 단계로 도는 Workflow 스크립트이며 요청할 때만 씁니다. 에이전트 팀(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`)을 켜 두었다면 이름 붙인 에이전트가 팀원으로 시작합니다. 자세한 내용: [docs/claude-code.md](docs/claude-code.md).
 - **Codex.** 세션의 멀티 에이전트 도구(`spawn_agent`, `send_message`/`followup_task` 또는 `send_input`, `wait_agent`)를 씁니다. 등록된 역할은 `agent_type`으로 지정하고, 등록되지 않은 역할은 기본 에이전트에 역할 지침을 붙여 넣습니다. `$orchestrate`로 직접 호출하면 배정마다 `model`과 `reasoning_effort`를 고르고 재조정합니다. Codex가 스킬을 자동 선택한 경우에는 허용된 때만 지정합니다. 자세한 내용: [docs/codex.md](docs/codex.md).
 
 ## 한계
 
 | 항목 | Claude Code | Codex |
 |---|---|---|
-| `read-only` 역할 | 설치된 역할 에이전트는 강제됨: 허용 도구가 Read, Grep, Glob, WebFetch, WebSearch, SendMessage뿐(셸·MCP 도구 없음). 범용 에이전트에 역할 지침을 붙여 실행하면 지시 수준 | 권고 수준: 역할 파일에 `sandbox_mode = "read-only"`가 있지만, 현재 Codex 소스에서는 하위 에이전트가 부모 세션 권한을 그대로 물려받음 |
-| `read-shell` 역할 | 부분적: Write, Edit, NotebookEdit는 막히지만 Bash·PowerShell이 남아 있어 "파일 수정 금지"는 지시 수준 | 권고 수준(위와 같음) |
+| `read-only` 역할 | 설치된 역할 에이전트는 강제됨: 허용 도구가 Read, Grep, Glob, WebFetch, WebSearch, SendMessage뿐(셸·MCP 도구 없음). 범용 에이전트에 역할 지침을 붙여 실행하면 지시 수준 | 적용 안 됨: 하위 에이전트는 부모 턴의 샌드박스와 승인을 물려받음(Codex 서브에이전트 문서). 역할 파일의 `sandbox_mode = "read-only"`는 선택 설치인 codex-team 런처용으로 남겨 둠 |
+| `read-shell` 역할 | 부분적: Write, Edit, NotebookEdit는 막히지만 Bash·PowerShell이 남아 있어 "파일 수정 금지"는 지시 수준 | 적용 안 됨(위와 같음) |
 | `write` 역할 | 배정에 적은 파일 담당만 적용 | 같음 |
 | 중첩 팀 금지 | 모든 역할에서 Agent 도구 제거. 범용 대체 에이전트는 생성 깊이를 제한하지 않으면 Agent 도구를 가짐 | 지시 수준(v2는 깊이 제한 없음) |
 | 설치 방식 | 플러그인과 `install.py --target claude` 중 하나만 사용. 둘 다 같은 스킬과 에이전트를 등록함 | `$skill-installer`(`~/.codex/skills/orchestrate`)와 `install.py`(`~/.agents/skills/orchestrate`) 중 하나만 사용. 서로 다른 폴더에 쓰므로 둘 다 쓰면 스킬이 두 번 등록됨 |
