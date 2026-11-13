@@ -1,7 +1,7 @@
 # Single source of truth for release metadata and role packs.
 # scripts/build.py reads this file; generated outputs must never be edited by hand.
 
-version = "2.0.0"
+version = "2.1.0"
 repository = "yoyowasi/codex-orchestrator-kit"
 license = "MIT"
 author = "yoyowasi"

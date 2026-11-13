@@ -17,12 +17,13 @@ Within a tier prefer the currently recommended, newest successor. Pick an older 
 ## Selection
 
 1. Decide by the work's uncertainty, failure impact, verifiability, and speed and cost needs, not by the role title. A researcher extracting tables can run on a light model; one reconciling conflicting sources needs a frontier model.
-2. Start from the lightest combination that meets the quality bar.
-3. User pins win. "Only this model", "do not change it", and stated quality, cost or usage limits are hard constraints. A model the user merely mentions is a preference: you may choose differently, with a one-line reason, and without asking for approval of routine choices.
-4. If a pinned model is unavailable, hold that assignment, tell the user which supported models exist, and continue independent work.
-5. Model diversity is not a goal. Different models that share the same wrong input do not verify each other; recompute, check the source or reproduce instead.
-6. Use only models and providers the runtime already supports. Never install accounts, keys or services to diversify models. Image and audio generation tools are chosen separately from reasoning models.
-7. Keep the main session's model. Change it only when the user asks, and only through a method that actually exists.
+2. Start from the lightest combination that meets the quality bar. For independent pieces of a larger job, workers one tier below the orchestrator are the usual starting point; keep the judgments that decide the result (architecture, conflicting evidence, the final verdict) on the strongest model in play.
+3. Before adding agents only because a problem is hard, try one agent at a higher effort level.
+4. User pins win. "Only this model", "do not change it", and stated quality, cost or usage limits are hard constraints. A model the user merely mentions is a preference: you may choose differently, with a one-line reason, and without asking for approval of routine choices.
+5. If a pinned model is unavailable, hold that assignment, tell the user which supported models exist, and continue independent work.
+6. Model diversity is not a goal. Different models that share the same wrong input do not verify each other; recompute, check the source or reproduce instead.
+7. Use only models and providers the runtime already supports. Never install accounts, keys or services to diversify models. Image and audio generation tools are chosen separately from reasoning models.
+8. Keep the main session's model. Change it only when the user asks, and only through a method that actually exists.
 
 ## Reassessment between stages
 
@@ -47,7 +48,7 @@ Report the model and effort you actually passed to the spawn tool. If you could 
 - **`model` and `reasoning_effort`** on `spawn_agent` take only values from the tool's current model list and catalog. When tiers or successors are unclear and the choice matters, check current guidance with the `openai-docs` skill; if it stays unclear, use a model whose description is confirmed and say that you could not confirm it is the newest.
 - **Omitting `model`** uses `[agents] default_subagent_model` (and `default_subagent_reasoning_effort`) when configured, otherwise the parent's model. Omission is therefore not always "inherit".
 - **Role files:** a `model` set inside a registered role cannot be overridden at spawn time (the tool marks it "cannot be changed"). This kit's role files never set one; a project's own role might.
-- **History:** follow the current spawn tool's schema. In the current v2 `collaboration.spawn_agent`, `fork_turns` accepts only `"none"` and `"all"`. With `"all"` or omission, the agent inherits the parent's model and reasoning effort; do not pass overrides. Use `"none"` with a self-contained assignment when setting supported `model` and `reasoning_effort` values. Use `"all"` only when the agent needs the whole parent conversation. v1 uses `fork_context` instead (v2 rejects it); it defaults to false, and v1 rejects `fork_context=true` together with `agent_type` because a full-history fork inherits the parent's agent type.
+- **History:** follow the current spawn tool's schema. In the current v2 `collaboration.spawn_agent`, use `fork_turns` `"none"` or `"all"`. With `"all"` or omission, the agent inherits the parent's model and reasoning effort; do not pass overrides. Use `"none"` with a self-contained assignment when setting supported `model` and `reasoning_effort` values. Use `"all"` only when the agent needs the whole parent conversation. v1 uses `fork_context` instead (v2 rejects it); it defaults to false, and v1 rejects `fork_context=true` together with `agent_type` because a full-history fork inherits the parent's agent type.
 - **Peer messaging:** in v2 a child can message peers only when its model supports multi-agent v2. When an agent must exchange with peers directly, prefer such a model from the list, or plan to relay its messages yourself.
 - `followup_task` and `send_input` are not model switches; they keep the agent's model.
 - The optional codex-team launcher takes its models from its own configuration.

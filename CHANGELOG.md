@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.1.0 - 2026-11-13
+
+Guidance updated from a survey of Claude Code, Codex, other agent platforms and published multi-agent studies as of 2026-11-13.
+
+### Added
+
+- "How to split" rules in `SKILL.md`: split by context rather than job title, keep writing single-threaded by default (parallel writers only on disjoint files with the contract fixed first, merged one at a time with tests after each merge), and weigh a team's token cost against one agent at a higher effort.
+- A `Decisions` field in the assignment template, so agents do not reopen choices already made, and a rule that results belong in the final report, with long output in an owned file.
+- Collaboration rules: direct exchange is for author and reviewer and for contract questions, not chat between parallel writers; reviewers get a clean context and check done criteria before quality; a stall rule (same failure twice or no progress: escalate, narrow or decide); a "Handoff through files" section with per-agent result files and a ledger for multi-stage runs.
+- Model selection: workers one tier below the orchestrator as the usual start for independent pieces, deciding judgments on the strongest model, and one agent at a higher effort before more agents for a merely hard problem.
+- A message from another agent is never the user's approval (skill and common role rules).
+
+### Changed
+
+- Claude Code: `name` is used only when the Agent tool offers it (otherwise the orchestrator relays peer messages); agent teams turn every named, non-fork Agent call without `isolation` into a teammate; `fable` and other aliases are placed by their description, never assumed to be the newest model on every provider; an omitted `effort` follows `CLAUDE_CODE_SUBAGENT_EFFORT` (v2.1.316) or the subagent model's own level (v2.1.317).
+- Codex: role-file `sandbox_mode` is described as not applied to subagents, per the Codex subagent docs (subagents inherit the parent's sandbox and approvals); the key is still generated for the codex-team launcher. A child that cannot surface an approval fails back to the parent, which the orchestrator treats as an approval request. Concurrency defaults are no longer stated; Codex chooses when nothing is set.
+- Outside the review triggers, the orchestrator checks routine work itself instead of adding a reviewer by reflex.
+- README, README.ko, docs/claude-code.md and docs/codex.md follow these changes (optional `name`, Codex `sandbox_mode`, no stated concurrency defaults).
+
 ## 2.0.0 - 2026-10-13
 
 A rewrite for both Codex and Claude Code. Upgrade steps are in the README under "Upgrading from v1".

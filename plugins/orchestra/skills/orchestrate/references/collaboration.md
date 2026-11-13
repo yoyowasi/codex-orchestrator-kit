@@ -19,7 +19,7 @@ Use this when two or more agents hand artifacts to each other or run a review lo
 
 ## Direct exchange
 
-Peers send questions, evidence, drafts and findings to each other directly; you do not need to relay everything. Keep each message to four parts:
+Peers send questions, evidence, drafts and findings to each other directly; you do not need to relay everything. Direct exchange pays off between an author and its reviewer and for questions about a shared contract. Parallel writers do not coordinate by chatting: you fix the contract before they start, and a contract change comes back to you. Keep each message to four parts:
 
 ```text
 <artifact and version> | <finding or question> | <evidence and impact> | <requested action>
@@ -31,8 +31,8 @@ Peers send questions, evidence, drafts and findings to each other directly; you 
 
 ## Write, review, fix, confirm
 
-1. The author sends the reviewer the artifact location and version, its verification results and the points to check.
-2. The reviewer checks against the done criteria and sends each finding with location, evidence, impact and fix direction straight to the author. No findings means no findings; do not invent any.
+1. The author sends the reviewer the artifact location and version, its verification results and the points to check. The reviewer works from a clean context: the artifact or diff, the done criteria and the checks, not the author's reasoning or conversation.
+2. The reviewer checks in two passes, first whether the artifact meets the done criteria and nothing beyond them, then its quality, and sends each finding with location, evidence, impact and fix direction straight to the author. No findings means no findings; do not invent any.
 3. The author fixes accepted findings or rebuts them with evidence.
 4. The author reports the new version and its verification results; the reviewer re-checks only the fixed points and what they affect.
 5. You check the latest artifact and the real verification output, then integrate. A success report alone never completes the loop.
@@ -47,7 +47,14 @@ Each side states the point in dispute, its evidence and how the question could b
 - At most two review rounds per artifact; a third needs your explicit decision or goes to the user as an open issue.
 - At most two resumes or follow-ups per finished agent; after that, spawn a fresh agent with a handoff.
 - End a debate when a round brings no new evidence.
+- Stalls: when an agent reports the same failure twice or a stage makes no progress, stop retrying it. Within the user's model pins and cost limits, hand the work, with the failure evidence, to a stronger model or a higher effort, narrow the task, or decide yourself. A stall retry counts toward the round and resume limits above.
 - Stop agents whose work is no longer needed, and do not keep idle agents waiting for work that may never come.
+
+## Handoff through files
+
+- Results belong in the agent's final report (see the note after the assignment template in SKILL.md).
+- Give each writing agent its own notes or results file for long output; read-only agents keep their reports concise instead. Several agents writing one shared notes file lose each other's entries.
+- For a run with several stages, keep a short ledger in a scratch file outside the deliverables: assignments, agents and models, artifact versions, decisions and open issues. It survives context compaction and feeds the final report.
 
 ## Concurrency
 
@@ -57,8 +64,8 @@ Start with two or three agents. Never spawn one agent per catalog role. Reuse an
 
 | Need | Claude Code |
 |---|---|
-| Start a specialist | `Agent` with `subagent_type`, `name`, `prompt`, `model`, `effort`; `isolation: "worktree"` for parallel writers in a git repository |
-| Message a peer | `SendMessage` to the peer's `name` (both agents must have been named at spawn) |
+| Start a specialist | `Agent` with `subagent_type`, `name` (where offered), `prompt`, `model`, `effort`; `isolation: "worktree"` for parallel writers in a git repository |
+| Message a peer | `SendMessage` to the peer's `name` (both agents must have been named at spawn); without `name`, relay yourself |
 | Follow up with a finished agent | `SendMessage` to its name, or its agent ID if the name was reused; resumes it with its full history |
 | See who can be messaged | `ListAgents` |
 | Wait | nothing; completion notifications arrive on their own, so never poll |
@@ -68,5 +75,5 @@ Start with two or three agents. Never spawn one agent per catalog role. Reuse an
 - Give each agent its peers' names in the assignment. If a message cannot be delivered, relay it yourself with its source and version.
 - Concurrent subagents are capped by `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20, Claude Code v2.1.217 or later). That is a ceiling, not a target.
 - Parallel writers in worktrees start from the default branch, not your HEAD, and return their changes on separate branches or worktree paths; you merge them and resolve conflicts as the integrator.
-- Workflow scripts take no user input once started but pause for agent permission prompts, set no per-stage model, and need workflows enabled and permitted in this Claude Code setup. Subagents cannot start them.
-- Agent teams (only when `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is already set): named Agent calls become teammates with a shared task list and direct messages. They work only in interactive sessions, one team per session; teammates cannot create teams; token use is much higher. Treat teammates like named subagents under this protocol.
+- Workflow scripts take no user input once started but pause for agent permission prompts, and need workflows enabled and permitted in this Claude Code setup. This kit's scripts set no per-stage model. Subagents cannot start them.
+- Agent teams (only when `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is already set): named Agent calls that are not forks and pass no `isolation` become teammates with a shared task list and direct messages. They work only in interactive sessions, one team per session; teammates cannot create teams; token use is much higher. Treat teammates like named subagents under this protocol.

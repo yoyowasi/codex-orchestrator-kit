@@ -78,7 +78,7 @@ Every installed role is a Codex custom agent. Registered roles appear in `spawn_
 
 ### Roles that are not registered
 
-Every role's brief ships inside the skill as `references/roles/<id>.md` (description, instructions and the common working rules). When a role is not registered, for example after a `$skill-installer` install or when its pack is not installed, the orchestrator spawns a default agent and pastes that brief above the assignment. The result is the same role, without the advisory `sandbox_mode`. When no catalog role fits, the orchestrator defines a runtime role (scope, deliverable, verification, access) in the assignment instead of forcing the nearest name.
+Every role's brief ships inside the skill as `references/roles/<id>.md` (description, instructions and the common working rules). When a role is not registered, for example after a `$skill-installer` install or when its pack is not installed, the orchestrator spawns a default agent and pastes that brief above the assignment. The result is the same role, without the role file's `sandbox_mode`, which subagents do not apply anyway. When no catalog role fits, the orchestrator defines a runtime role (scope, deliverable, verification, access) in the assignment instead of forcing the nearest name.
 
 ## Collaboration tools
 
@@ -120,16 +120,16 @@ How Codex counts:
 |---|---|
 | `[agents] max_concurrent_threads_per_session = N` (alias `max_threads`) | N subagents, main agent excluded, for v1 and v2 |
 | `[features.multi_agent_v2] max_concurrent_threads_per_session = N` | v2 only: N threads including the main agent; takes precedence over `[agents]` |
-| unset, v2 tools | 3 subagents |
-| unset, v1 tools | 6 subagents; nesting depth `agents.max_depth` (default 1) |
+| unset | Codex chooses; read the real limit from the config or the error response |
+| `[agents] max_depth` | v1 nesting depth (default 1); v2 has no depth limit |
 
 The installer looks only at `[agents]`. If you set a limit under `[features.multi_agent_v2]`, that value still wins in v2 sessions.
 
 The limit is a ceiling, not a team size; the orchestrator starts with two or three specialists. v2 has no depth limit, so "specialists never build teams" is an instruction there. Open a new session or restart Codex if a changed limit does not show. The optional launcher's window count is not affected by this setting.
 
-## `sandbox_mode` is advisory
+## `sandbox_mode` is not applied to subagents
 
-Role files with `access = "read-only"` or `"read-shell"` (architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer, reviewer, security-reviewer) set `sandbox_mode = "read-only"`. Codex documents this key for custom agents, but in the Codex source current at this release, a spawned agent inherits the parent session's permissions and the role's `sandbox_mode` is not applied. Treat "read-only" as an instruction unless you have verified it on your Codex version. For real enforcement, run the parent session itself in Codex's read-only sandbox.
+Role files with `access = "read-only"` or `"read-shell"` (architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer, reviewer, security-reviewer) set `sandbox_mode = "read-only"`. Subagents inherit the parent turn's sandbox and approvals, and the Codex subagent docs state that `sandbox_mode` in a custom agent file does not override the parent configuration or create a separate read-only sandbox. Treat "read-only" as an instruction. For real enforcement, run the parent session itself in Codex's read-only sandbox. A child that needs an approval it cannot surface fails and returns the error to the parent.
 
 Where the setting is applied, such as in the optional codex-team launcher, it is real: the read-shell roles (reviewer, security-reviewer) may still run commands, but tests or builds that write caches, coverage or build output fail or ask for approval there. Give such checks to a write role or run them in the main session.
 

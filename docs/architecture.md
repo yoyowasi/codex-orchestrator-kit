@@ -56,7 +56,7 @@ Do not repeat anything that _common.md already says.
 Limits that the docs must state honestly:
 
 - Claude Code `read-shell` roles still have Bash/PowerShell, so "do not modify files" is an instruction, not enforcement.
-- Codex documents `sandbox_mode` for custom agents, but current Codex source lets spawned agents inherit the parent session's permissions. Treat it as advisory until verified on your Codex version.
+- Codex subagents inherit the parent turn's sandbox and approvals; the Codex subagent docs say `sandbox_mode` in a custom agent file does not override the parent configuration. The key is still generated because the optional codex-team launcher applies it.
 - `Agent` is removed from every Claude role so subagents cannot build nested teams.
 
 ## Template syntax (Markdown sources and `instructions`)

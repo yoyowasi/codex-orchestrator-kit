@@ -28,8 +28,8 @@ These settings apply only to installed role agents. A role run from its brief in
 | access | What the role file sets | Enforcement |
 |---|---|---|
 | `write` | nothing extra | none beyond your assignment's ownership |
-| `read-shell` | `sandbox_mode = "read-only"`; the role may run tests and analysis | advisory: current Codex source makes spawned agents inherit the parent session's permissions |
-| `read-only` | `sandbox_mode = "read-only"` | advisory, as above; treat "do not modify files" as an instruction unless verified on this Codex version |
+| `read-shell` | `sandbox_mode = "read-only"`; the role may run tests and analysis | not applied to subagents: they inherit the parent turn's sandbox and approvals, and the Codex docs say an agent file's `sandbox_mode` does not override that |
+| `read-only` | `sandbox_mode = "read-only"` | not applied, as above; "do not modify files" is an instruction |
 
 Where `sandbox_mode` is applied, such as in the optional codex-team launcher, read-shell roles are truly read-only: tests or builds that write caches, coverage or build output fail or need approval. Assign that work to a write role, or run it yourself.
 <!-- @end -->

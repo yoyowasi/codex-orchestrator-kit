@@ -1,6 +1,6 @@
 # Team examples
 
-Take only the parts a task needs; none of these teams has to run in full or all at once. Each author fixes their own artifact after review. Roles are in [roles.md](roles.md), the exchange rules in [collaboration.md](collaboration.md), model choice in [models.md](models.md).
+Take only the parts a task needs; none of these teams has to run in full or all at once. Each split is a separate context (its own files, question or artifact); the role names who does it, not why it is split. Each author fixes their own artifact after review. Roles are in [roles.md](roles.md), the exchange rules in [collaboration.md](collaboration.md), model choice in [models.md](models.md).
 
 ## Team patterns
 
@@ -12,7 +12,7 @@ Take only the parts a task needs; none of these teams has to run in full or all 
 | Creative text and localization | creative_writer + localization_editor | intent and must-keep phrases; alternatives compared sentence by sentence | final text per locale, glossary and wording decisions |
 | Course and assessment | learning_designer + a runtime subject-expert role | expert flags misconceptions, prerequisites and difficulty | timed lesson plan, exercises, items with answers mapped to objectives |
 | Operations and automation | operations_designer + automation_engineer; app_operator as the single owner of any shared UI session | inputs, outputs and exception rules | runs on samples and exceptions, safe to re-run; system changes stay behind approval gates |
-| Web feature | architect fixes contracts, then frontend_developer + backend_developer, then qa_engineer; accessibility_auditor or reviewer when triggered | contract changes go to the peer and to the orchestrator | integrated feature, scenario tests run, open issues listed |
+| Web feature | architect only when the contract is not obvious; frontend_developer + backend_developer on disjoint files once the contract is fixed; qa_engineer only for scenarios the implementers cannot test; accessibility_auditor or reviewer when triggered | contract changes go to the peer and to the orchestrator | integrated feature, scenario tests run, open issues listed |
 | Skill or plugin | skill_author, plus plugin_developer only for a plugin; evidence_reviewer | claimed tools, parameters and permissions checked against the real runtime | structure validated, one representative run, actual install state reported |
 | Sites work | the site-owning agent as sites_builder; helpers return bounded assets or research only | assets and findings handed to the owner | site built and previewed; publishing approved separately |
 
@@ -22,7 +22,7 @@ Take only the parts a task needs; none of these teams has to run in full or all 
 
 **Team or solo.** A team: the change touches a public, authentication-adjacent path, which triggers an independent review, and the user asked for a separate checker. Two agents are enough. One service changes, the middleware pattern is clear (no architect), and the implementer's tests cover the scenarios (no QA). The security reviewer is spawned once the implementation passes its tests, not earlier to wait. Announced as: "Team: backend developer (general tier) implements, security reviewer (frontier tier) reviews; I integrate and run the tests."
 
-Each agent is named after its role, which is unique here: `backend_developer` and `security_reviewer`.
+Where the spawn tool takes a name, each agent is named after its role, which is unique here: `backend_developer` and `security_reviewer`.
 
 **Assignment 1**
 
@@ -32,6 +32,7 @@ Model: general tier, medium effort (well-understood middleware change with tests
 Goal and done: per-API-key limit of 100 requests/minute on all /v1 routes; HTTP 429 with Retry-After when exceeded; limit configurable; existing and new tests pass
 Working path: services/api (paths below are relative to it)
 Inputs: src/middleware/, src/config.ts, the Redis client in src/lib/redis.ts; main at commit a1b2c3d
+Decisions: key the limit by API key, not client IP; reuse the existing Redis client, no new dependency; a fixed one-minute window is acceptable
 Access: owns and may edit src/middleware/rate-limit.ts (new), src/app.ts, src/config.ts, tests/rate-limit.test.ts | read only everything else
 Instructions and skills: the project instruction file, sections "Testing" and "Configuration"; no stack skill applies
 Mode: implement
@@ -49,6 +50,7 @@ Model: frontier tier, high effort (a bypass on a public path is high impact and 
 Goal and done: find exploitable weaknesses in the rate-limit change, or state that none were found and what was not checked
 Working path: services/api (paths below are relative to it)
 Inputs: commit d4e5f6a from backend_developer and its test output
+Decisions: the limit is keyed by API key with a fixed one-minute window (set in the implementation assignment); review the implementation, not that choice
 Access: read only, whole repository; owns nothing; may run tests and static analysis; do not modify files (an instruction, not enforced by tools)
 Instructions and skills: the project instruction file, section "Security"; security-best-practices if installed
 Mode: read-only
