@@ -1,6 +1,6 @@
 {
   "name": "orchestra-agent-dev",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Authoring agent skills and plugins for Claude Code and Codex.",
   "author": {
     "name": "yoyowasi"

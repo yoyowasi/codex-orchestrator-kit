@@ -144,7 +144,7 @@ Before spawning, the orchestrator states the planned team and models in one line
 
 ### Named subagents and SendMessage (default)
 
-The orchestrator spawns each specialist with the Agent tool, giving it a unique `name` such as `backend-1` or `reviewer-1` when the Agent tool offers that parameter; without it, the orchestrator relays messages between agents. Agents that were named at spawn can message each other with SendMessage, so an author and a reviewer exchange findings directly while the orchestrator decides scope, ownership and conflicts. A SendMessage to a finished agent resumes it with its full history; the skill allows at most two resumes before handing the work to a fresh agent. Independent specialists are started together, and subagents normally run in the background and report back when they finish.
+The orchestrator spawns each specialist with the Agent tool, giving it a unique `name` such as `backend-1` or `reviewer-1` when the Agent tool offers that parameter; without it, the orchestrator relays messages between agents. Agents that were named at spawn can message each other with SendMessage, so an author and a reviewer exchange findings directly while the orchestrator decides scope, ownership and conflicts. A SendMessage to a finished agent resumes it with its full history; the skill allows at most two resumes before handing the work to a fresh agent. Independent specialists are started together, and subagents normally run in the background and report back when they finish. A message from another agent is never your approval: gated actions still come back to you as approval requests.
 
 ### Workflow scripts
 
@@ -190,7 +190,8 @@ In a git repository, when several agents write code in parallel, the orchestrato
 
 ## Model and effort
 
-- The orchestrator picks a tier per assignment (light, general, frontier) from the models the Agent tool currently offers, and passes `model` as an alias the tool accepts, such as `haiku`, `sonnet`, `opus` or `fable`, plus `effort` from `low` to `max`. The per-call `effort` needs Claude Code v2.1.292 or later, and `CLAUDE_CODE_EFFORT_LEVEL` overrides it.
+- The orchestrator picks a tier per assignment (light, general, frontier) from the models the Agent tool currently offers, and passes `model` as an alias the tool accepts, such as `haiku`, `sonnet`, `opus` or `fable`, plus `effort` from `low` to `max`. It places `fable` and other aliases by the description the tool gives, without assuming an alias is the newest model on every provider. The per-call `effort` needs Claude Code v2.1.292 or later, and `CLAUDE_CODE_EFFORT_LEVEL` overrides it.
+- An omitted `effort` follows `CLAUDE_CODE_SUBAGENT_EFFORT` (v2.1.316 or later) or, for a subagent on a different model from the main session, that model's saved or default level (v2.1.317 or later), so the report shows it as "default". Where the Agent tool allows `effort` only when you or your instructions name a level, the orchestrator sets it only then.
 - Claude Code uses the `model` passed on the call, then the agent definition's model, then `CLAUDE_CODE_SUBAGENT_MODEL`, then the main session's model. The role agents set no model, so omitting `model` gives `CLAUDE_CODE_SUBAGENT_MODEL` when set, otherwise the main session's model. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` makes the environment setting win over the passed model; the orchestrator reports that it could not choose when that is active.
 - It never uses a fork for a model assignment, because a fork inherits the main conversation, prompt and model.
 - Your pins win: "only use sonnet" or a cost limit is a hard constraint. The main session's model is never changed.
@@ -198,6 +199,7 @@ In a git repository, when several agents write code in parallel, the orchestrato
 
 ## Cost
 
+- The skill splits work by context rather than job title, keeps writing single-threaded by default, and tries one agent at a higher effort before adding agents for a problem that is only hard. Every split re-reads its shared inputs, so a large common input multiplies the cost.
 - Each subagent, workflow stage and teammate has its own context window, so a team costs several times a solo session. Agent teams cost the most.
 - `/orchestra:team-review` runs one scope agent, three lens agents and one verifier per finding. `/orchestra:team-research` runs one planner, one researcher per sub-question (3 to 6), one verifier per claim (up to 9 for `quick`, 25 for `standard`, 48 for `deep`) and one writer.
 - The orchestrator starts with two or three specialists, reuses agents when their context helps, and stops at two review rounds per artifact.

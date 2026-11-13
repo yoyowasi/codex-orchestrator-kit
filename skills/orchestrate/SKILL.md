@@ -29,7 +29,7 @@ How to split:
 
 - **Split by context, not by job title.** A split is a separate question, file set or artifact that one agent can finish with its own context. Do not cut one dependent chain into planner, implementer and tester agents; a role brief describes a split, it does not justify one.
 - **Keep writing single-threaded by default.** Parallelize reading, research and review instead. Run parallel writers only on disjoint files with the shared contract fixed first, merge them one at a time and run the tests after each merge.
-- **Weigh the cost.** A team uses several times the tokens of one agent and is often slower end to end; its gain is coverage and independent checking, not speed. When the only argument for a team is a harder problem, try one agent at a higher effort level first.
+- **Weigh the cost.** A team uses several times the tokens of one agent and is often slower end to end; its gain is coverage and independent checking, not speed. When the only argument for a team is a harder problem, try one agent at a higher effort level first. Every split re-reads its shared inputs, so a large common input (a long spec, a big diff) multiplies the cost; give each agent only the part it needs, or keep the work in fewer agents.
 
 ## Procedure
 
