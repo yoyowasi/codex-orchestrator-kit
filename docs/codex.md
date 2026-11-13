@@ -68,7 +68,7 @@ $orchestrate Add sign-up and login to this project. Pick the specialists and mod
 $orchestrate Turn the attached customer feedback and cost data into a business proposal. Split user insights, financial scenarios and the document, and have someone check every figure.
 ```
 
-You can also describe the work without `$orchestrate`; Codex picks the skill when the request matches its description. Automatic selection is not the explicit request that the multi-agent tools ask for before spawning, setting `agent_type` or choosing a model and effort, so the orchestrator then goes only as far as the tools and your higher-priority instructions allow, which can mean working solo. Invoke `$orchestrate` directly when you want a team. The orchestrator states the planned team and models in one line before spawning, or says "Working solo" with a reason.
+You can also describe the work without `$orchestrate`; Codex picks the skill when the request matches its description. Automatic selection is not the explicit request that the multi-agent tools ask for before spawning, setting `agent_type` or choosing a model and effort, so the orchestrator then goes only as far as the tools and your higher-priority instructions allow, which can mean working solo. Invoke `$orchestrate` directly when you want a team. The orchestrator states the planned team and models in one line before spawning, and asks first if that would exceed a cost or usage limit you set, or says "Working solo" with a reason.
 
 ## Packs and `agent_type`
 
@@ -129,7 +129,7 @@ The limit is a ceiling, not a team size; the orchestrator starts with one to thr
 
 ## `sandbox_mode` is not applied to subagents
 
-Role files with `access = "read-only"` or `"read-shell"` (architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer, reviewer, security-reviewer) set `sandbox_mode = "read-only"`. Subagents inherit the parent turn's sandbox and approvals, and the Codex subagent docs state that `sandbox_mode` in a custom agent file does not override the parent configuration or create a separate read-only sandbox. Treat "read-only" as an instruction. For real enforcement, run the parent session itself in Codex's read-only sandbox. A child that needs an approval it cannot surface fails and returns the error to the parent.
+Role files with `access = "read-only"` or `"read-shell"` (architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer, reviewer, security-reviewer) set `sandbox_mode = "read-only"`. Subagents inherit the parent turn's sandbox and approvals, and the Codex subagent docs state that `sandbox_mode` in a custom agent file does not override the parent configuration or create a separate read-only sandbox. Treat "read-only" as an instruction. For real enforcement, run the parent session itself in Codex's read-only sandbox. A child that needs an approval it cannot surface fails and returns the error to the parent; the orchestrator treats that as the agent's approval request and brings it to you instead of retrying around it.
 
 Where the setting is applied, such as in the optional codex-team launcher, it is real: the read-shell roles (reviewer, security-reviewer) may still run commands, but tests or builds that write caches, coverage or build output fail or ask for approval there. Give such checks to a write role or run them in the main session.
 

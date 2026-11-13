@@ -84,7 +84,7 @@ python scripts/install.py --target claude --uninstall      # remove what it inst
 
 `--packs` replaces the previous selection, so list every pack you want to keep; without `--packs` a rerun keeps the packs installed before. The installer stops when a file it did not install differs from the release; review the file, then rerun with `--force` to back it up and replace it. `--dry-run` shows the whole plan, including such conflicts, without writing. `--target all` installs for Codex and Claude Code in one run. The full option list is in [codex.md](codex.md#install-options).
 
-If `~/.claude/agents` did not exist before, restart Claude Code once so it notices the new directory.
+If `~/.claude/agents` did not exist before, restart Claude Code once so it notices the new directory. A session that already used the skill can keep the text it loaded, so start a new session after an update.
 
 **Use either the plugins or the script install, never both.** Both register the same skill and roles, so with both you get `/orchestrate` and `/orchestra:orchestrate`, and every role twice (`reviewer` and `orchestra:reviewer`). To switch, uninstall one way first.
 

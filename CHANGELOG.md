@@ -17,6 +17,11 @@ Fixes from the test run of 2.1.1.
 - docs/claude-code.md: the `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` cap (default 20) as a ceiling, not a team size.
 - docs/claude-code.md and docs/codex.md: workers start one tier below the orchestrator, and the judgments that decide the result stay on the strongest model in play.
 - README, README.ko, docs/claude-code.md and docs/codex.md: the orchestrator never installs a pack itself.
+- README and README.ko: an independent reviewer is added only when a review trigger applies; the overview diagram says so.
+- docs/claude-code.md, README and README.ko: start a new session after an update, because a session that already used the skill can keep the text it loaded.
+- README and README.ko: Codex nesting is instruction-only in v2; v1 children get no agent tools at the default depth.
+- docs/codex.md: the orchestrator asks first when a team would exceed your cost or usage limit, and treats a child's failed approval as an approval request.
+- Codex: when automatic selection rules out spawning, the orchestrator does the roles itself in sequence and says so.
 
 ## 2.1.1 - 2026-11-13
 
