@@ -48,7 +48,7 @@ Invoke it explicitly or just describe the work:
 /orchestra:orchestrate Add sign-up and login to this project. Pick the specialists and models, split file ownership, then implement, review and verify.
 ```
 
-Roles from packs you did not install still work: the orchestrator runs them in a general-purpose agent with the role's brief. Updating, uninstalling, the script-install alternative and migrating from hand-copied agent files are in [docs/claude-code.md](docs/claude-code.md).
+Roles from packs you did not install still work: the orchestrator runs them in a general-purpose agent with the role's brief. It never installs a pack on its own. Updating, uninstalling, the script-install alternative and migrating from hand-copied agent files are in [docs/claude-code.md](docs/claude-code.md).
 
 ## Quick start: Codex
 
@@ -119,7 +119,7 @@ and give me a list of wording decisions.
 ## How collaboration works
 
 - **Claude Code.** The main session spawns named subagents with the Agent tool; named peers (where the Agent tool offers `name`) message each other with SendMessage, and parallel writers in a git repository can each get a worktree. `/orchestra:team-review` (read-only code review where each finding must survive a refutation attempt) and `/orchestra:team-research` (sourced research with every claim checked against its source) are fixed-round Workflow scripts, used only when you ask for them. If you have enabled agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), named Agent calls that are not forks and pass no `isolation` start as teammates instead. Details: [docs/claude-code.md](docs/claude-code.md).
-- **Codex.** The orchestrator uses the session's multi-agent tools (`spawn_agent`, `send_message`/`followup_task` or `send_input`, `wait_agent`), passes `agent_type` for registered roles, and otherwise pastes the role brief into a default agent. When you invoke `$orchestrate` directly, it chooses and reassesses `model` and `reasoning_effort` per assignment; when Codex selects the skill automatically, it sets them only when you allow it. Details: [docs/codex.md](docs/codex.md).
+- **Codex.** The orchestrator uses the session's multi-agent tools (`spawn_agent`, `send_message`/`followup_task` or `send_input`, `wait_agent`), passes `agent_type` for registered roles, and otherwise pastes the role brief into a default agent. When you invoke `$orchestrate` directly, it chooses and reassesses `model` and `reasoning_effort` per assignment; when Codex selects the skill automatically, it spawns agents and sets `agent_type`, `model` and `reasoning_effort` only as far as the tools and your instructions allow. Details: [docs/codex.md](docs/codex.md).
 
 ## Limits
 

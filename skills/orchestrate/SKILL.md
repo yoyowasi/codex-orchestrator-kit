@@ -23,7 +23,7 @@ Work solo, and say so in one line ("Working solo: <reason>"), when:
 - several workers would have to edit the same file;
 - the user wants you to do it yourself.
 
-An explicit request for a team wins over these solo criteria; keep that team minimal, such as one author and one reviewer. Start with two or three specialists and add more only for independent work within the concurrency limit. One agent may cover several roles. Before spawning, state the planned team (roles and models) in one line; if it would exceed a cost or usage limit the user set, ask first.
+An explicit request for a team wins over these solo criteria; keep that team minimal, such as one author and one reviewer. Start with one to three specialists and add more only for independent work within the concurrency limit. One agent may cover several roles. Before spawning, state the planned team (roles and models) in one line; if it would exceed a cost or usage limit the user set, ask first.
 
 How to split:
 

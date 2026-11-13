@@ -23,7 +23,7 @@ Work solo, and say so in one line ("Working solo: <reason>"), when:
 - several workers would have to edit the same file;
 - the user wants you to do it yourself.
 
-An explicit request for a team wins over these solo criteria; keep that team minimal, such as one author and one reviewer. Start with two or three specialists and add more only for independent work within the concurrency limit. One agent may cover several roles. Before spawning, state the planned team (roles and models) in one line; if it would exceed a cost or usage limit the user set, ask first.
+An explicit request for a team wins over these solo criteria; keep that team minimal, such as one author and one reviewer. Start with one to three specialists and add more only for independent work within the concurrency limit. One agent may cover several roles. Before spawning, state the planned team (roles and models) in one line; if it would exceed a cost or usage limit the user set, ask first.
 
 How to split:
 
@@ -110,7 +110,7 @@ In Claude Code you coordinate with the Agent tool and SendMessage.
 - **Model and effort:** set `model` (an alias the Agent tool accepts, such as `haiku`, `sonnet`, `opus` or `fable`; omit it for the default order in models.md) and `effort` (`low` to `max`; Claude Code v2.1.292 or later) per models.md, unless the Agent tool restricts `effort` (see models.md). Do not request a fork when you want a role or a different model: a fork inherits the main conversation, prompt and model.
 - **Parallel and waiting:** start independent agents together, with several Agent calls in one message. Subagents normally run in the background and notify you when they finish: never poll, and continue your own work meanwhile. Claim parallel work only when the agents actually overlapped.
 - **Follow-ups:** SendMessage to a finished agent resumes it with its full history. That is costly: resume an agent at most twice, then spawn a fresh one with a handoff.
-- **Nesting:** Agent is removed from every role, so only you can build the team.
+- **Nesting:** Agent is removed from every installed role, so installed specialists cannot build a team; the general-purpose fallback keeps Agent, and there the no-team rule is instruction-level.
 - **Parallel writers** in a git repository: pass `isolation: "worktree"` and merge their changes yourself, one at a time, running the tests after each merge. A worktree starts from the default branch, not your current HEAD, so commit the changes a writer depends on first, or name the base commit in its assignment.
 - **Read-only truth:** installed read-only roles such as architect and evidence-reviewer have a real tool allowlist without a shell. Read-shell roles (reviewer, security-reviewer) keep Bash or PowerShell to run tests and analysis, so their no-edit rule is an instruction, not enforcement. Report it that way.
 - **Workflows:** the core plugin ships two fixed-round Workflow scripts: `/orchestra:team-review` (read-only code review with refutation) and `/orchestra:team-research` (sourced research with claim checks); with the script install they are `/team-review` and `/team-research`. Run one only when the user asks for it.

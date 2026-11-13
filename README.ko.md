@@ -48,7 +48,7 @@ Claude Code 세션에서 실행합니다.
 /orchestra:orchestrate 이 프로젝트에 회원가입과 로그인을 추가해줘. 필요한 전문가와 모델을 고르고 파일 담당을 나눠 구현·검토·검증까지 진행해줘.
 ```
 
-설치하지 않은 팩의 역할도 쓸 수 있습니다. 총괄이 범용 에이전트에 해당 역할 지침을 붙여 실행합니다. 업데이트, 제거, 스크립트 설치, 손으로 복사한 에이전트 파일 정리는 [docs/claude-code.md](docs/claude-code.md)에 있습니다(영문).
+설치하지 않은 팩의 역할도 쓸 수 있습니다. 총괄이 범용 에이전트에 해당 역할 지침을 붙여 실행합니다. 총괄이 팩을 스스로 설치하지는 않습니다. 업데이트, 제거, 스크립트 설치, 손으로 복사한 에이전트 파일 정리는 [docs/claude-code.md](docs/claude-code.md)에 있습니다(영문).
 
 ## 빠른 시작: Codex
 
@@ -119,7 +119,7 @@ Claude Code에서는 `/orchestra:orchestrate`, Codex에서는 `$orchestrate`를 
 ## 협업 방식
 
 - **Claude Code.** 메인 세션이 Agent 도구로 이름 붙인 서브에이전트를 만들고, 이름이 있는 동료끼리(Agent 도구가 `name`을 지원할 때) SendMessage로 직접 소통합니다. git 저장소에서 여러 작업자가 동시에 코드를 쓰면 각자 워크트리를 줄 수 있습니다. `/orchestra:team-review`(각 지적이 반박 시도를 통과해야 하는 읽기 전용 코드 리뷰)와 `/orchestra:team-research`(모든 주장을 출처와 대조하는 조사)는 정해진 단계로 도는 Workflow 스크립트이며 요청할 때만 씁니다. 에이전트 팀(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`)을 켜 두었다면 fork가 아니고 `isolation`도 없는 이름 붙인 Agent 호출은 팀원으로 시작합니다. 자세한 내용: [docs/claude-code.md](docs/claude-code.md).
-- **Codex.** 세션의 멀티 에이전트 도구(`spawn_agent`, `send_message`/`followup_task` 또는 `send_input`, `wait_agent`)를 씁니다. 등록된 역할은 `agent_type`으로 지정하고, 등록되지 않은 역할은 기본 에이전트에 역할 지침을 붙여 넣습니다. `$orchestrate`로 직접 호출하면 배정마다 `model`과 `reasoning_effort`를 고르고 재조정합니다. Codex가 스킬을 자동 선택한 경우에는 허용된 때만 지정합니다. 자세한 내용: [docs/codex.md](docs/codex.md).
+- **Codex.** 세션의 멀티 에이전트 도구(`spawn_agent`, `send_message`/`followup_task` 또는 `send_input`, `wait_agent`)를 씁니다. 등록된 역할은 `agent_type`으로 지정하고, 등록되지 않은 역할은 기본 에이전트에 역할 지침을 붙여 넣습니다. `$orchestrate`로 직접 호출하면 배정마다 `model`과 `reasoning_effort`를 고르고 재조정합니다. Codex가 스킬을 자동 선택한 경우에는 에이전트 생성과 `agent_type`·`model`·`reasoning_effort` 지정을 도구와 사용자 지침이 허용하는 만큼만 합니다. 자세한 내용: [docs/codex.md](docs/codex.md).
 
 ## 한계
 

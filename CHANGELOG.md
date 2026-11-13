@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.1.2 - 2026-11-13
+
+Fixes from the test run of 2.1.1.
+
+### Changed
+
+- Teams start with one to three specialists instead of two or three, so a single independent reviewer is a valid team when splitting would only make agents re-read a large shared input.
+- Claude Code: the nesting rule says Agent is removed from every installed role, and that the general-purpose fallback keeps Agent with an instruction-level no-team rule; docs/claude-code.md says the same.
+
+### Fixed
+
+- docs/codex.md, README and README.ko: automatic selection in Codex is not the explicit request needed before spawning or setting `agent_type`, not only model and effort.
+- docs/claude-code.md: the `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` cap (default 20) as a ceiling, not a team size.
+- docs/claude-code.md and docs/codex.md: workers start one tier below the orchestrator, and the judgments that decide the result stay on the strongest model in play.
+- README, README.ko, docs/claude-code.md and docs/codex.md: the orchestrator never installs a pack itself.
+
 ## 2.1.1 - 2026-11-13
 
 Fixes from the first test run of 2.1.0.
