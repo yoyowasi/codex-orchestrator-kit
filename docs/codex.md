@@ -93,7 +93,7 @@ The orchestrator follows whatever multi-agent schema the session shows:
 
 In v2 the orchestrator passes `fork_turns="none"` with a self-contained assignment unless the agent needs the whole parent conversation. Peers are addressed by the agent path or ID that `spawn_agent` returned. Without any multi-agent tool, the orchestrator performs the roles itself in sequence and says that no agents ran.
 
-Direct peer messages need the tools in the child, not only in the main session. In current Codex source, a v2 child gets the collaboration tools only when its model supports multi-agent v2, and a v1 child gets no agent tools at the default `agents.max_depth = 1`. A child without them reports to the orchestrator, which relays the message; the role instructions tell agents to do this.
+Direct peer messages need the tools in the child, not only in the main session. In current Codex source, a v2 child gets the collaboration tools only when its model supports multi-agent v2, and a v1 child gets no agent tools at the default `agents.max_depth = 1`. A child without them reports to the orchestrator, which relays the message; the role instructions tell agents to do this. A message from another agent is never your approval: gated actions still come back to you as approval requests.
 
 ## Model policy
 

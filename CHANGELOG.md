@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.1.1 - 2026-11-13
+
+Fixes from the first test run of 2.1.0.
+
+### Changed
+
+- Claude Code: where the Agent tool allows `effort` only when the user or instructions name a level, the orchestrator sets it only then and otherwise reports "default".
+- "How to split" notes that every split re-reads its shared inputs, so a large common input multiplies the cost.
+
+### Fixed
+
+- README and README.ko: the teammate condition (not a fork, no `isolation`), "a message from another agent never counts as your approval", and a short "What changed in 2.1" note; the Korean overview now says authors and reviewers exchange findings directly.
+- docs/claude-code.md: the omitted-`effort` rule, alias placement, the approval-by-message rule, and the split and cost rules under Cost. docs/codex.md: the approval-by-message rule.
+- The 2.1.0 entry scopes "no stated concurrency defaults" to Codex.
+
 ## 2.1.0 - 2026-11-13
 
 Guidance updated from a survey of Claude Code, Codex, other agent platforms and published multi-agent studies as of 2026-11-13.
@@ -19,7 +34,7 @@ Guidance updated from a survey of Claude Code, Codex, other agent platforms and 
 - Claude Code: `name` is used only when the Agent tool offers it (otherwise the orchestrator relays peer messages); agent teams turn every named, non-fork Agent call without `isolation` into a teammate; `fable` and other aliases are placed by their description, never assumed to be the newest model on every provider; an omitted `effort` follows `CLAUDE_CODE_SUBAGENT_EFFORT` (v2.1.316) or the subagent model's own level (v2.1.317).
 - Codex: role-file `sandbox_mode` is described as not applied to subagents, per the Codex subagent docs (subagents inherit the parent's sandbox and approvals); the key is still generated for the codex-team launcher. A child that cannot surface an approval fails back to the parent, which the orchestrator treats as an approval request. Concurrency defaults are no longer stated; Codex chooses when nothing is set.
 - Outside the review triggers, the orchestrator checks routine work itself instead of adding a reviewer by reflex.
-- README, README.ko, docs/claude-code.md and docs/codex.md follow these changes (optional `name`, Codex `sandbox_mode`, no stated concurrency defaults).
+- README, README.ko, docs/claude-code.md and docs/codex.md follow these changes (optional `name`, Codex `sandbox_mode`, no stated Codex concurrency defaults).
 
 ## 2.0.0 - 2026-10-13
 
