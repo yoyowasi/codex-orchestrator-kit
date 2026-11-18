@@ -24,7 +24,7 @@ Nine new roles, one structure for every role's instructions, and fixes from a se
 
 - install.py: `--target all` with the same directory for the Codex and Claude Code homes is refused before writing. Before, both targets shared one install manifest, the second overwrote the first, and a rerun or `--uninstall` then failed on the other target's files.
 - install.py: an uninstall removes only the recorded `created_dirs` that lie on the way to, or inside, an install location, like every other path it touches.
-- codex-team: `start` takes the project path only from a leading argument that is not a flag, so `codex-team start --headless` uses the current directory instead of a project named `--headless`.
+- codex-team: `start` takes the project path only from a leading argument that is not a flag, so `codex-team start --headless` uses the current directory instead of a project named `--headless`; a project path after a flag is refused with a hint instead of being ignored.
 - codex-team: an unknown command prints the help and exits with status 1 instead of 0.
 - codex-team: when the Codex server cannot be spawned, the hidden supervisor process now stops instead of polling forever.
 - codex-team: a request on a closed connection, or a failed `initialize`, no longer leaves a timer or socket that keeps short commands such as `status` running.

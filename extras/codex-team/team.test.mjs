@@ -152,6 +152,9 @@ test('start takes the project only from a leading non-flag argument',()=>{
   assert.equal(headless.windows,false);
   assert.deepEqual(headless.roles,['researcher','reviewer']);
   assert.equal(startOptions(['--models','m1:low'],cwd).models,'m1:low');
+  assert.equal(startOptions(['app','--roles','a,b','--models','m1:low','--headless'],cwd).project,'app');
+  for(const args of [['--headless','C:\\app'],['app','other'],['--roles','a,b','app']])
+    assert.throws(()=>startOptions(args,cwd),/Put the project path first/,args.join(' '));
 });
 
 test('an unknown command prints help and exits non-zero',()=>{

@@ -239,7 +239,11 @@ async function serve(manifest) {
     fs.writeFileSync(path.join(dir,'server-stopped.json'),JSON.stringify({code}));
     process.exitCode=code||0;fs.closeSync(out);
   };
-  child.on('error',error=>{fs.writeFileSync(path.join(dir,'server-error.txt'),error.message);finish(1);});
+  child.on('error',error=>{
+    fs.writeFileSync(path.join(dir,'server-error.txt'),error.message);
+    // A failed kill also emits 'error'; only a server that never spawned ends the supervisor here.
+    if(child.pid===undefined)finish(1);
+  });
   child.on('exit',code=>finish(code));
   const timer=setInterval(()=>{
     if(!stopped&&fs.existsSync(path.join(dir,'stop.request'))){
@@ -397,6 +401,8 @@ export function flagValue(args,flag,example){
 // `start [project] [--roles a,b] [--models m:e,...] [--headless]`; the project defaults to the
 // current directory, so a leading flag is never taken as the project path.
 export function startOptions(args,cwd=process.cwd()){
+  const stray=args.findIndex((arg,i)=>i>0&&!arg.startsWith('--')&&!['--roles','--models'].includes(args[i-1]));
+  if(stray>=0)throw new Error(`Put the project path first: codex-team start [project] [--roles a,b] [--models m:e,...] [--headless] (got "${args[stray]}").`);
   const project=args[0]&&!args[0].startsWith('--')?args[0]:cwd;
   const roleList=flagValue(args,'--roles','researcher,business_analyst');
   const roles=roleList?roleList.split(',').map(role=>role.trim()):['frontend_developer','backend_developer','qa_engineer'];
