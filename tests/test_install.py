@@ -698,6 +698,23 @@ class InstallTests(unittest.TestCase):
         self.assertTrue((self.home / 'agents').is_dir())
         self.assertEqual(tree(self.home), ['config.toml'])
 
+    def test_shared_home_for_both_targets_is_refused_before_writing(self):
+        with self.assertRaisesRegex(ValueError, 'same directory'):
+            self.install(target='all', claude_home=self.home)
+        self.assertFalse(self.home.exists())
+
+    def test_uninstall_removes_only_recorded_directories_near_the_install(self):
+        self.install(target='claude')
+        stranger = self.root / 'unrelated-empty-dir'
+        stranger.mkdir()
+        path = self.claude / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        manifest['created_dirs'] = sorted(manifest.get('created_dirs', []) + [str(stranger.resolve())])
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        self.install(target='claude', uninstall=True)
+        self.assertTrue(stranger.is_dir())
+        self.assertFalse(self.claude.exists())  # the install created it, and it is empty again
+
     def test_launcher_shim_uses_the_console_code_page(self):
         home = Path('C:/Users/홍길동/.codex')
         shim = module._launcher_shim(home, 'C:/Py 100%/python.exe', 'C:/node/node.exe', 'cp949')

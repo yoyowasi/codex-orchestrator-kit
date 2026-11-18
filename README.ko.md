@@ -149,6 +149,8 @@ v1 파일을 2.0 파일로 교체하고(백업 위치 `$CODEX_HOME/agent-backups
 
 **2.1에서 바뀐 점:** 2026년 11월 에이전트 플랫폼과 멀티에이전트 연구를 조사해 지침을 고쳤습니다. 일을 직무가 아니라 맥락 단위로 나누고, 쓰기는 기본적으로 한 명이 맡고, 팀을 꾸리기 전에 에이전트 하나의 추론 수준을 올리는 쪽과 비용을 비교합니다. 배정에 `Decisions` 칸이 생겼고, 검토자는 작성자의 추론 없이 산출물만 받고, 같은 실패가 반복되면 재시도 대신 멈추고, 긴 결과는 파일로 넘깁니다. Claude Code와 Codex의 플랫폼 사실도 바로잡았습니다. 설치 방법은 그대로이니 쓰던 설치·업데이트 명령을 다시 실행한 뒤 새 세션을 열면 됩니다. 전체 목록: [CHANGELOG.md](CHANGELOG.md).
 
+**2.2에서 바뀐 점:** 역할 9개가 늘었습니다(`dev`: legacy-modernization-engineer, data-engineer, ml-engineer, mobile-developer, ui-designer; `business`: project-manager, compliance-reviewer; `content`: copy-editor, ux-writer). 모든 역할 지침이 한 구조(Before you start, Method, Deliverable, Quality checks, Handoffs and boundaries)를 따르고, 역할과 Workflow 스크립트가 같은 심각도·우선순위·주장 판정 척도를 씁니다. 새 역할은 해당 팩과 함께 설치되니 쓰던 설치·업데이트 명령을 다시 실행한 뒤 새 세션을 열면 됩니다. 전체 목록: [CHANGELOG.md](CHANGELOG.md).
+
 ## 저장소 구조
 
 ```text

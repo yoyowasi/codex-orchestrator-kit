@@ -73,8 +73,10 @@ export class Rpc {
       for (const p of this.pending.values()) {clearTimeout(p.timer);p.reject(new Error('The local server connection closed.'));}
       this.pending.clear();
     });
-    await this.call('initialize', {clientInfo:{name:'codex_team_local',title:'Codex Team',version:'1.0.0'}});
-    this.ws.send(JSON.stringify({method:'initialized',params:{}}));
+    try {
+      await this.call('initialize', {clientInfo:{name:'codex_team_local',title:'Codex Team',version:'1.0.0'}});
+      this.ws.send(JSON.stringify({method:'initialized',params:{}}));
+    } catch(error) {this.ws.close();throw error;}
     return this;
   }
   call(method,params={},timeout=30000) {
@@ -82,7 +84,9 @@ export class Rpc {
     return new Promise((resolve,reject) => {
       const timer=setTimeout(() => {this.pending.delete(id);reject(new Error(`${method}: no response in time. Check the status before retrying a request that changes anything, so it does not run twice.`));}, timeout);
       this.pending.set(id,{resolve,reject,timer});
-      this.ws.send(JSON.stringify({id,method,params}));
+      // A send on a closed socket throws; drop the timer so it cannot keep the process alive.
+      try {this.ws.send(JSON.stringify({id,method,params}));}
+      catch(error) {clearTimeout(timer);this.pending.delete(id);reject(error);}
     });
   }
   close() {this.ws?.close();}
@@ -177,6 +181,11 @@ export async function startTeam(project,roles,{windows=true,models:modelSpec}={}
   if(!fs.statSync(project).isDirectory()) throw new Error('A project directory is required.');
   const definitions=loadRoles();
   for(const role of roles) if(!definitions[role]) throw new Error(`Role is not installed in the Codex agents directory: ${role}`);
+  // Check role-file models before any server or thread exists, so the error names the role.
+  for(const role of roles) {
+    const model=definitions[role].model;
+    if(model&&!models.some(m=>m.model===model))throw new Error(`Role ${role} sets model "${model}", which is not a team model (${describeModels(models)}). Remove it from the role file, or add it with --models or CODEX_TEAM_MODELS.`);
+  }
   definitions.orchestrator??=COORDINATOR_ROLE;
   if(new Set(roles).size!==roles.length || roles.includes('orchestrator')) throw new Error('List each worker role once, and do not list orchestrator.');
   if(roles.length<1 || roles.length>6) throw new Error('Choose between 1 and 6 worker roles.');
@@ -222,9 +231,16 @@ async function serve(manifest) {
   const team=readJson(manifest), dir=path.dirname(manifest);
   const out=fs.openSync(path.join(dir,'server.log'),'a');
   const child=spawn(team.codex[0],[...team.codex.slice(1),'app-server','--listen',team.url],{stdio:['ignore',out,out],windowsHide:true});
-  child.on('error',error=>{fs.writeFileSync(path.join(dir,'server-error.txt'),error.message);});
-  let stopped=false;
-  child.on('exit',code=>{fs.writeFileSync(path.join(dir,'server-stopped.json'),JSON.stringify({code}));process.exitCode=code||0;clearInterval(timer);fs.closeSync(out);});
+  let stopped=false, finished=false;
+  // 'exit' may not follow a spawn 'error', so either one ends the supervisor, exactly once.
+  const finish=code=>{
+    if(finished)return;
+    finished=true;clearInterval(timer);
+    fs.writeFileSync(path.join(dir,'server-stopped.json'),JSON.stringify({code}));
+    process.exitCode=code||0;fs.closeSync(out);
+  };
+  child.on('error',error=>{fs.writeFileSync(path.join(dir,'server-error.txt'),error.message);finish(1);});
+  child.on('exit',code=>finish(code));
   const timer=setInterval(()=>{
     if(!stopped&&fs.existsSync(path.join(dir,'stop.request'))){
       stopped=true;
@@ -378,17 +394,23 @@ export function flagValue(args,flag,example){
   if(!value?.trim()||value.startsWith('--'))throw new Error(`${flag} needs a value such as ${example}.`);
   return value;
 }
+// `start [project] [--roles a,b] [--models m:e,...] [--headless]`; the project defaults to the
+// current directory, so a leading flag is never taken as the project path.
+export function startOptions(args,cwd=process.cwd()){
+  const project=args[0]&&!args[0].startsWith('--')?args[0]:cwd;
+  const roleList=flagValue(args,'--roles','researcher,business_analyst');
+  const roles=roleList?roleList.split(',').map(role=>role.trim()):['frontend_developer','backend_developer','qa_engineer'];
+  const models=flagValue(args,'--models','gpt-6-sol:medium,gpt-6-astra:high');
+  return {project,roles,windows:!args.includes('--headless'),models};
+}
 async function main(args){
   const command=args.shift()||'help';
   if(command==='serve')return serve(args[0]);
   if(command==='attach')return attach(args[0],args[1]);
   if(command==='mcp')return mcp(args[0]);
   if(command==='start'){
-    const project=args.shift()||process.cwd();
-    const roleList=flagValue(args,'--roles','researcher,business_analyst');
-    const roles=roleList?roleList.split(',').map(role=>role.trim()):['frontend_developer','backend_developer','qa_engineer'];
-    const models=flagValue(args,'--models','gpt-6-sol:medium,gpt-6-astra:high');
-    const team=await startTeam(project,roles,{windows:!args.includes('--headless'),models});
+    const {project,roles,windows,models}=startOptions(args);
+    const team=await startTeam(project,roles,{windows,models});
     console.log(`Team created: ${team.id}\nProject: ${team.project}\nModels: ${describeModels(team.models)} (coordinator: ${describeModels([team.coordinatorModel])})\nType the work in the coordinator window.\nSettings: ${team.manifest}`);return;
   }
   if(command==='status'){
@@ -413,12 +435,15 @@ async function main(args){
     for(const [name,role]of Object.entries(loadRoles()))console.log(`${name}: ${role.description}`);
     return;
   }
+  const unknown=!['help','--help','-h'].includes(command);
+  if(unknown)console.error(`Unknown command: ${command}\n`);
   console.log('Codex Team - specialists working across several CLI windows (optional, Windows only, experimental)\n\n  codex-team start C:\\projects\\my-app\n  codex-team start C:\\projects\\my-app --roles researcher,business_analyst\n  codex-team start C:\\projects\\my-app --models gpt-6-sol:medium,gpt-6-astra:high\n  codex-team status\n  codex-team open\n  codex-team stop\n  codex-team roles\n\nstart creates empty coordinator and worker sessions and opens their windows. Work begins when you send a request to the coordinator.\n\nModels: --models or CODEX_TEAM_MODELS (model:effort,..., routine first; default ' + DEFAULT_TEAM_MODELS + '),\nCODEX_TEAM_COORDINATOR_MODEL (default: the last listed model).');
+  if(unknown)process.exitCode=1;
 }
 
 if(process.argv[1] && path.resolve(process.argv[1])===FILE){
   const args=process.argv.slice(2);
   main([...args]).then(()=>{
-    if(!['serve','attach','mcp'].includes(args[0]))process.exit(0);
+    if(!['serve','attach','mcp'].includes(args[0]))process.exit(process.exitCode||0);
   }).catch(error=>{console.error(`Codex Team error: ${error.message}`);process.exit(1);});
 }

@@ -4,7 +4,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import {normalizeOwned,scopesOverlap,TeamControl,parseModels,teamModels,modelSettings,coordinatorModel,
-  coordinatorInstructions,teamTools,flagValue,DEFAULT_TEAM_MODELS} from './codex-team.mjs';
+  coordinatorInstructions,teamTools,flagValue,startOptions,DEFAULT_TEAM_MODELS} from './codex-team.mjs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 // Keep the tests independent of the caller's launcher configuration.
 delete process.env.CODEX_TEAM_MODELS;
@@ -139,4 +141,26 @@ test('flags need a value that is not another flag',()=>{
   assert.equal(flagValue(['--roles','a,b'],'--roles','a,b'),'a,b');
   for(const args of [['--roles'],['--roles',''],['--roles','--headless']])
     assert.throws(()=>flagValue(args,'--roles','a,b'),/--roles needs a value such as a,b/);
+});
+
+test('start takes the project only from a leading non-flag argument',()=>{
+  const cwd=path.join(os.tmpdir(),'codex-team-cwd');
+  assert.deepEqual(startOptions([],cwd),{project:cwd,roles:['frontend_developer','backend_developer','qa_engineer'],windows:true,models:undefined});
+  assert.equal(startOptions(['C:\\work\\app','--headless'],cwd).project,'C:\\work\\app');
+  const headless=startOptions(['--headless','--roles','researcher,reviewer'],cwd);
+  assert.equal(headless.project,cwd);
+  assert.equal(headless.windows,false);
+  assert.deepEqual(headless.roles,['researcher','reviewer']);
+  assert.equal(startOptions(['--models','m1:low'],cwd).models,'m1:low');
+});
+
+test('an unknown command prints help and exits non-zero',()=>{
+  const cli=path.join(path.dirname(fileURLToPath(import.meta.url)),'codex-team.mjs');
+  const typo=spawnSync(process.execPath,[cli,'strt'],{encoding:'utf8'});
+  assert.equal(typo.status,1);
+  assert.match(typo.stderr,/Unknown command: strt/);
+  assert.match(typo.stdout,/codex-team start/);
+  const help=spawnSync(process.execPath,[cli,'help'],{encoding:'utf8'});
+  assert.equal(help.status,0);
+  assert.equal(help.stderr,'');
 });

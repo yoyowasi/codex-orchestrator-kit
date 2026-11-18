@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 2.2.0 - 2026-11-18
+
+Nine new roles, one structure for every role's instructions, and fixes from a self-review of the repository.
 
 ### Added
 
@@ -14,6 +16,20 @@ All notable changes to this project are documented here. The format follows [Kee
 - Every role's instructions follow one structure: Before you start, Method, Deliverable, Quality checks, Handoffs and boundaries. Each role now names the checks, ordered steps, output fields and scales of its profession instead of short general rules; ownership and boundaries between existing roles are unchanged, except the work they now hand to the new roles (see Added).
 - Roles share the same scales: `blocker | major | minor` for review findings, `critical | high | medium | low` for security findings, `must | should | could | won't` for priorities and `supported | partly supported | unsupported | unverifiable` for checked claims.
 - docs/architecture.md documents the role instruction structure; the role template in `references/roles.md` uses it.
+- The Workflow scripts use the shared scales. `/orchestra:team-review` rates its correctness and missing-test lenses `blocker | major | minor` and its security lens `critical | high | medium | low` (one order: blocker with critical, major with high); before, every lens used the security scale, which contradicted the reviewer role's own instructions. `/orchestra:team-research` uses `supported | partly supported | unsupported | unverifiable` and confidence `confirmed | likely | possible`, the scales of the researcher and evidence-reviewer roles it runs; a claim whose verifier failed or gave no correction is now `unverifiable` (was `unverified`).
+- Common role rules: a handoff to a role the assignment does not name as a peer goes to the orchestrator as a request, because that role's pack may not be installed.
+- docs/architecture.md lists `roles.md` among the skill references and documents role-specific status scales.
+
+### Fixed
+
+- install.py: `--target all` with the same directory for the Codex and Claude Code homes is refused before writing. Before, both targets shared one install manifest, the second overwrote the first, and a rerun or `--uninstall` then failed on the other target's files.
+- install.py: an uninstall removes only the recorded `created_dirs` that lie on the way to, or inside, an install location, like every other path it touches.
+- codex-team: `start` takes the project path only from a leading argument that is not a flag, so `codex-team start --headless` uses the current directory instead of a project named `--headless`.
+- codex-team: an unknown command prints the help and exits with status 1 instead of 0.
+- codex-team: when the Codex server cannot be spawned, the hidden supervisor process now stops instead of polling forever.
+- codex-team: a request on a closed connection, or a failed `initialize`, no longer leaves a timer or socket that keeps short commands such as `status` running.
+- codex-team: a worker role file that sets a model outside the team models is refused before the server starts, with the role named.
+- Tests: `team-review` now runs against a mocked runtime (scope failure, lens failure, refuted and unverified findings, sort order across scales, role fallback), and the launcher's `start` arguments and unknown-command exit code are tested.
 
 ## 2.1.2 - 2026-11-13
 
