@@ -558,6 +558,10 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
     if 'claude' in targets:
         claude_home = homes['claude'] = Path(claude_home or _default_claude_home()).expanduser().resolve()
     manifests = {t: homes[t] / INSTALL_MANIFEST for t in targets}
+    if len(set(manifests.values())) != len(manifests):
+        # One manifest per home: a shared home would let one target overwrite the other's record.
+        raise ValueError('The Codex and Claude Code homes are the same directory; '
+                         'use separate --codex-home and --claude-home directories, or install one target at a time.')
     previous = {t: _read_manifest(manifests[t]) for t in targets}
 
     skill_dirs, owned_dirs, skill_roots = {}, [], []
@@ -594,6 +598,13 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
         if not isinstance(made, list):
             raise ValueError(f'Install manifest has an invalid created_dirs list: {manifests[t]}')
         created[t] = {_recorded_path(directory, 'created directory') for directory in made}
+
+    install_bases = [*homes.values(), *skill_roots, *([Path(bin_dir).expanduser().resolve()] if bin_dir else [])]
+
+    def near_install(directory: Path) -> bool:
+        """Created directories lie on the way to, or inside, an install location; a damaged
+        manifest must not make an uninstall remove empty directories anywhere else."""
+        return any(directory.is_relative_to(base) or base.is_relative_to(directory) for base in install_bases)
 
     plan: list[_File] = []
     roots = {t: set() for t in targets}
@@ -785,7 +796,7 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
             if manifests[t].exists():
                 manifests[t].unlink()
                 emptied.append(manifests[t])
-            leftover_dirs += created[t]
+            leftover_dirs += [directory for directory in created[t] if near_install(directory)]
             continue
         if carried[t]:
             roots[t].update(_recorded_path(root, 'root') for root in previous[t].get('roots', []))

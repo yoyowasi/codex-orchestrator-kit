@@ -54,7 +54,10 @@ const depth = Object.hasOwn(DEPTHS, askedDepth) ? DEPTHS[askedDepth] : DEPTHS.st
 if (!Object.hasOwn(DEPTHS, askedDepth)) log(`Unknown depth "${askedDepth}"; using standard.`)
 
 const NO_WRITES = 'Do not create, edit or delete files and do not change any external system; return your result only.'
-const CONFIDENCE = ['high', 'medium', 'low']
+// The scales the roles share: claim confidence confirmed | likely | possible, and claim status
+// supported | partly supported | unsupported | unverifiable.
+const CONFIDENCE = ['confirmed', 'likely', 'possible']
+const CONFIDENCE_GUIDE = 'Confidence: confirmed = primary source checked, or two independent sources agree; likely = one reliable source; possible = weak, dated or single secondary source.'
 
 const PLAN = {
   type: 'object',
@@ -99,9 +102,9 @@ const CLAIMS = {
 const VERDICT = {
   type: 'object',
   properties: {
-    status: { type: 'string', enum: ['supported', 'partial', 'unsupported'] },
+    status: { type: 'string', enum: ['supported', 'partly supported', 'unsupported', 'unverifiable'] },
     note: { type: 'string', description: 'Why, citing what the source says' },
-    correctedClaim: { type: 'string', description: 'For partial: the claim narrowed to what the source supports' },
+    correctedClaim: { type: 'string', description: 'For partly supported: the claim narrowed to what the source supports' },
   },
   required: ['status', 'note'],
 }
@@ -123,6 +126,7 @@ const researchPrompt = sq => [
   `Evidence that would answer it: ${sq.evidence}`, '',
   `Return up to ${depth.claims} key claims that answer the sub-question. Prefer primary and official sources and check time-sensitive facts against current material.`,
   'Back every claim with a source you actually opened. Never invent URLs, quotes, numbers or dates. If you have no web access, say so in gaps and use only material available to you.',
+  CONFIDENCE_GUIDE,
   NO_WRITES,
 ].filter(Boolean).join('\n')
 
@@ -132,7 +136,7 @@ const verifyPrompt = (c, sq) => [
   `Cited source: ${c.url}${c.title ? ` (${c.title})` : ''}, dated ${c.date}`,
   c.excerpt ? `Excerpt offered by the researcher: ${c.excerpt}` : '', '',
   'Open the source yourself. Check that it states the claim, that its date and scope match, and that the claim does not overstate it.',
-  'supported = the source states it; partial = the source supports only a narrower, older or qualified version (give correctedClaim); unsupported = the source does not say it, contradicts it, or cannot be opened.',
+  'supported = the source states it; partly supported = the source supports only a narrower, older or qualified version (give correctedClaim); unsupported = the source does not say it or contradicts it; unverifiable = you could not open or access the source.',
   NO_WRITES,
 ].filter(Boolean).join('\n')
 
@@ -145,11 +149,11 @@ const results = await pipeline(
     log(`Sub-question ${i + 1}: ${found.claims.length} claim(s) to verify`)
     return parallel(found.claims.map((c, j) => async () => {
       const v = await roleAgent('evidence-reviewer', verifyPrompt(c, sq), { label: `verify#${i + 1}.${j + 1}`, phase: 'Verify', schema: VERDICT }).catch(() => null)
-      if (v && v.status === 'partial' && !(v.correctedClaim || '').trim()) {
-        v.status = 'unverified'
-        v.note = `partial verdict has no nonempty correctedClaim: ${v.note}`
+      if (v && v.status === 'partly supported' && !(v.correctedClaim || '').trim()) {
+        v.status = 'unverifiable'
+        v.note = `partly supported verdict has no nonempty correctedClaim: ${v.note}`
       }
-      return { ...c, subQuestion: i + 1, status: v ? v.status : 'unverified', note: v ? v.note : 'verifier failed or was skipped', correctedClaim: (v && v.correctedClaim) || '' }
+      return { ...c, subQuestion: i + 1, status: v ? v.status : 'unverifiable', note: v ? v.note : 'verifier failed or was skipped', correctedClaim: (v && v.correctedClaim) || '' }
     })).then(claims => ({ claims, gaps: found.gaps }))
   },
 )
@@ -158,8 +162,8 @@ const failedSubs = subs.map((s, i) => (results[i] ? null : `${i + 1}. ${s.questi
 if (failedSubs.length) log(`Sub-question(s) with no result, NOT covered: ${failedSubs.join(' | ')}`)
 const done = results.filter(Boolean)
 const all = done.flatMap(r => r.claims.filter(Boolean))
-const claims = all.filter(c => c.status === 'supported' || c.status === 'partial').map((c, n) => ({ id: n + 1, ...c }))
-const dropped = all.filter(c => c.status === 'unsupported' || c.status === 'unverified')
+const claims = all.filter(c => c.status === 'supported' || c.status === 'partly supported').map((c, n) => ({ id: n + 1, ...c }))
+const dropped = all.filter(c => c.status === 'unsupported' || c.status === 'unverifiable')
 for (const c of dropped) log(`Dropped (${c.status}): ${c.claim} [${c.url}] ${c.note}`)
 log(`Kept ${claims.length} claim(s); dropped ${dropped.length}.`)
 const gaps = done.flatMap(r => r.gaps)
@@ -168,13 +172,13 @@ phase('Synthesize')
 const answer = await roleAgent('researcher', [
   `Question: ${question}`, scopeLine, '',
   'Verified claims (cite by number):',
-  ...(claims.length ? claims.map(c => `[${c.id}] ${c.correctedClaim || c.claim} | ${c.title ? c.title + ' | ' : ''}${c.url} | ${c.date} | ${c.status}${c.status === 'partial' ? ` (${c.note})` : ''} | confidence ${c.confidence}`) : ['(none)']),
+  ...(claims.length ? claims.map(c => `[${c.id}] ${c.correctedClaim || c.claim} | ${c.title ? c.title + ' | ' : ''}${c.url} | ${c.date} | ${c.status}${c.status === 'partly supported' ? ` (${c.note})` : ''} | confidence ${c.confidence}`) : ['(none)']),
   '', 'Research gaps:', ...(gaps.length ? gaps.map(g => `- ${g}`) : ['(none reported)']),
   ...(failedSubs.length ? ['', 'Sub-questions that returned nothing:', ...failedSubs] : []),
   ...(dropped.length ? ['', 'Claims that failed verification (not facts; candidates for open questions):', ...dropped.map(c => `- ${c.claim} (${c.status})`)] : []),
   '',
   'Write the answer in the language of the question, as Markdown. Lead with the direct answer, then the supporting points. Cite every factual statement with [n] using only the verified claims above, and end with a Sources list mapping [n] to title, URL and date.',
-  'State uncertainty where claims are partial, low-confidence, dated or in conflict, then list open questions. If no claim is verified, say the question could not be answered from verified sources.',
+  'State uncertainty where claims are partly supported, of possible confidence, dated or in conflict, then list open questions. If no claim is verified, say the question could not be answered from verified sources.',
   NO_WRITES,
 ].join('\n'), { label: 'synthesize', phase: 'Synthesize' })
   .catch(e => { log(`Synthesis agent failed: ${(e && e.message) || e}`); return null })

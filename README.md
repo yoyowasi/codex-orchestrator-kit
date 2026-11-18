@@ -149,6 +149,8 @@ This replaces the v1 files with 2.0 files (backups go to `$CODEX_HOME/agent-back
 
 **What changed in 2.1:** guidance from a November 2026 survey of agent platforms and multi-agent studies. Work is split by context rather than job title, writing stays single-threaded by default, and a team's cost is weighed against one agent at a higher effort. Assignments gain a `Decisions` field, reviewers get a clean context, stalled work stops instead of retrying, and long results are handed over through files. Claude Code and Codex platform facts were corrected. Nothing about installing changed; rerun your install or update command, then start a new session. Full list: [CHANGELOG.md](CHANGELOG.md).
 
+**What changed in 2.2:** nine roles (`dev`: legacy-modernization-engineer, data-engineer, ml-engineer, mobile-developer, ui-designer; `business`: project-manager, compliance-reviewer; `content`: copy-editor, ux-writer). Every role's instructions follow one structure (Before you start, Method, Deliverable, Quality checks, Handoffs and boundaries), and roles and Workflow scripts share one set of severity, priority and claim scales. The new roles arrive with the packs they belong to: rerun your install or update command, then start a new session. Full list: [CHANGELOG.md](CHANGELOG.md).
+
 ## Repository layout
 
 ```text

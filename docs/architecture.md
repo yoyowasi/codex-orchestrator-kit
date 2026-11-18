@@ -11,7 +11,7 @@ src/                          SOURCE (edit here)
   manifest.toml               version, repository, packs, legacy file names ([skill] name is fixed: orchestrate)
   skill/
     SKILL.md                  skill entry point (platform blocks allowed)
-    references/*.md           models, collaboration, skill routing, examples
+    references/*.md           roles (catalog), models, collaboration, skill routing, examples
   roles/
     _common.md                rules appended to every role (platform blocks allowed)
     <id>.toml                 one file per role (files starting with _ are not roles)
@@ -63,6 +63,8 @@ Shared scales, so outputs read the same across roles:
 - Security findings: `critical | high | medium | low` by reachability and impact, with the same confidence scale.
 - Priorities in product, business and operations work: `must | should | could | won't (this time)`.
 - Claims checked against sources: `supported | partly supported | unsupported | unverifiable`.
+
+The Workflow scripts use the same scales: `team-review` rates its correctness and missing-test lenses `blocker | major | minor` and its security lens `critical | high | medium | low`; `team-research` uses the claim scale and the confidence scale. A role may add a status scale for work the shared ones do not cover, such as requirements checked against evidence (`met | partly met | not met | not assessable`) or delivery status (`on track | at risk | off track`); it never replaces a shared scale for the same purpose.
 
 Ownership and boundaries between roles are part of the contract: when one role's text hands work to another, the other role's text must accept it.
 

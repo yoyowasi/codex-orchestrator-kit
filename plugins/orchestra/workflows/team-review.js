@@ -49,8 +49,19 @@ const target = (rawTarget && String(rawTarget).trim()) || 'the current uncommitt
 const focus = input && typeof input === 'object' && input.focus ? String(input.focus).trim() : ''
 
 const READ_ONLY = 'This is a read-only review. Do not create, edit, delete, stage or commit any file, and do not run commands that change the working tree or any external system. Read-only commands (git diff/log/show, search, existing tests or linters that do not rewrite sources) are allowed. Write prose in the language of the review request.'
-const SEVERITIES = ['critical', 'high', 'medium', 'low']
-const RANK = { critical: 0, high: 1, medium: 2, low: 3 }
+// Lenses use the scales the roles share: review findings blocker | major | minor, security
+// findings critical | high | medium | low. One order spans both: blocker with critical, major with high.
+const SCALES = {
+  review: {
+    levels: ['blocker', 'major', 'minor'],
+    guide: 'Severity: blocker = breaks behavior, data or a contract and must be fixed before merge; major = a real defect or missing verification that should be fixed in this change; minor = worth fixing but does not block.',
+  },
+  security: {
+    levels: ['critical', 'high', 'medium', 'low'],
+    guide: 'Severity: critical = reachable without privileges, leads to takeover or large data loss; high = reachable with low privilege or limited preconditions, serious impact; medium = needs unusual preconditions or has limited impact; low = hardening, little reachable impact.',
+  },
+}
+const RANK = { critical: 0, blocker: 0, high: 1, major: 1, medium: 2, minor: 3, low: 3 }
 
 const SCOPE = {
   type: 'object',
@@ -71,7 +82,7 @@ const SCOPE = {
   },
   required: ['intent', 'files'],
 }
-const FINDINGS = {
+const findingsSchema = levels => ({
   type: 'object',
   properties: {
     findings: {
@@ -83,7 +94,7 @@ const FINDINGS = {
           line: { type: 'integer', minimum: 0, description: '1-based line the finding anchors to; 0 for file-level' },
           title: { type: 'string', description: 'One-line statement of the defect' },
           scenario: { type: 'string', description: 'Concrete inputs or state that lead to the wrong result' },
-          severity: { type: 'string', enum: SEVERITIES },
+          severity: { type: 'string', enum: levels },
           suggestion: { type: 'string', description: 'Direction for the fix' },
         },
         required: ['file', 'line', 'title', 'scenario', 'severity'],
@@ -91,21 +102,21 @@ const FINDINGS = {
     },
   },
   required: ['findings'],
-}
-const VERDICT = {
+})
+const verdictSchema = levels => ({
   type: 'object',
   properties: {
     refuted: { type: 'boolean' },
     reason: { type: 'string', description: 'Short justification that cites the code you read' },
-    severity: { type: 'string', enum: SEVERITIES, description: 'Severity you would assign if the finding stands' },
+    severity: { type: 'string', enum: levels, description: 'Severity you would assign if the finding stands' },
   },
   required: ['refuted', 'reason'],
-}
+})
 
 const LENSES = [
-  { id: 'correctness', role: 'reviewer', ask: 'correctness bugs and behavior regressions: wrong logic, broken callers or contracts, unhandled edge cases and errors, concurrency, data loss.' },
-  { id: 'security', role: 'security-reviewer', ask: 'reachable security problems: authentication or authorization gaps, injection, unsafe input handling, secret or data exposure, unsafe defaults, risky dependency use.' },
-  { id: 'tests', role: 'reviewer', ask: 'missing or inadequate tests: changed behavior with no test, tests that cannot fail, removed coverage, untested error paths. Anchor each finding at the line that implements the untested behavior.' },
+  { id: 'correctness', role: 'reviewer', scale: SCALES.review, ask: 'correctness bugs and behavior regressions: wrong logic, broken callers or contracts, unhandled edge cases and errors, concurrency, data loss.' },
+  { id: 'security', role: 'security-reviewer', scale: SCALES.security, ask: 'reachable security problems: authentication or authorization gaps, injection, unsafe input handling, secret or data exposure, unsafe defaults, risky dependency use.' },
+  { id: 'tests', role: 'reviewer', scale: SCALES.review, ask: 'missing or inadequate tests: changed behavior with no test, tests that cannot fail, removed coverage, untested error paths. Anchor each finding at the line that implements the untested behavior.' },
 ]
 
 phase('Scope')
@@ -132,7 +143,7 @@ const findPrompt = lens => [
   context, '',
   `Your lens: ${lens.ask}`,
   'Read the changed code, its callers and related tests. Report only defects with a concrete, reachable failure scenario; skip style preferences and anything outside your lens.',
-  'Severity: critical = exploitable or data loss on a common path; high = wrong behavior on a common path; medium = failure on an edge case; low = minor impact.',
+  lens.scale.guide,
   'Return an empty list when nothing qualifies.',
   READ_ONLY,
 ].join('\n')
@@ -143,7 +154,8 @@ const verifyPrompt = (f, lens) => [
   `Location: ${f.file}:${f.line}`,
   `Claim: ${f.title}`,
   `Scenario: ${f.scenario}`,
-  `Claimed severity: ${f.severity}`, '',
+  `Claimed severity: ${f.severity}`,
+  lens.scale.guide, '',
   'Read the code yourself. Set refuted=true if the scenario cannot happen, is already handled, is not in code the target touches or affects, or cannot be confirmed from the code. Set refuted=false only when you can trace the failure path.',
   READ_ONLY,
 ].join('\n')
@@ -151,12 +163,12 @@ const verifyPrompt = (f, lens) => [
 phase('Review')
 const results = await pipeline(
   LENSES,
-  lens => roleAgent(lens.role, findPrompt(lens), { label: `review:${lens.id}`, phase: 'Review', schema: FINDINGS }),
+  lens => roleAgent(lens.role, findPrompt(lens), { label: `review:${lens.id}`, phase: 'Review', schema: findingsSchema(lens.scale.levels) }),
   (found, lens) => {
     if (!found) return null
     log(`${lens.id}: ${found.findings.length} finding(s) to verify`)
     return parallel(found.findings.map((f, i) => async () => {
-      const verdict = await roleAgent(lens.role, verifyPrompt(f, lens), { label: `verify:${lens.id}#${i + 1}`, phase: 'Verify', schema: VERDICT }).catch(() => null)
+      const verdict = await roleAgent(lens.role, verifyPrompt(f, lens), { label: `verify:${lens.id}#${i + 1}`, phase: 'Verify', schema: verdictSchema(lens.scale.levels) }).catch(() => null)
       return { ...f, lens: lens.id, verdict }
     }))
   },
