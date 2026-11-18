@@ -63,7 +63,20 @@ pack = "content"
 description = "One English sentence: what it does and when to pick it."
 access = "read-only"
 instructions = '''
-- One rule per line; do not repeat the common working rules.
+## Before you start
+- What to confirm first; which gaps block the work.
+
+## Method
+1. Ordered steps of the profession.
+
+## Deliverable
+- Named fields or sections, the scale used, what "done" means.
+
+## Quality checks
+- Checks on the role's own output.
+
+## Handoffs and boundaries
+- Peers, role-specific gated actions, boundaries. Do not repeat the common working rules.
 '''
 ```
 

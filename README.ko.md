@@ -4,7 +4,7 @@
 
 **Codex와 Claude Code에서 함께 쓰는 전문가 팀 오케스트레이션 스킬입니다. 과업에 필요한 전문가·모델·스킬을 고르고, 서로의 작업을 검토하게 한 뒤, 통합 결과를 직접 검증하고 보고합니다.**
 
-개발, 조사, 사업 분석, 데이터, 문서, 콘텐츠, 업무 운영을 다루는 역할 35개(Claude Code는 33개)를 팩 단위로 설치할 수 있습니다. Codex에는 `$orchestrate` 스킬과 커스텀 에이전트를, Claude Code에는 `/orchestra:orchestrate` 스킬·역할 서브에이전트·Workflow 스크립트 2개가 든 `orchestra` 플러그인을 제공합니다. 저장소는 `yoyowasi/codex-orchestrator-kit`입니다. 개인 프로젝트이며 OpenAI나 Anthropic의 공식 제품이 아닙니다.
+개발, 조사, 사업 분석, 데이터, 문서, 콘텐츠, 업무 운영을 다루는 역할 44개(Claude Code는 42개)를 팩 단위로 설치할 수 있습니다. Codex에는 `$orchestrate` 스킬과 커스텀 에이전트를, Claude Code에는 `/orchestra:orchestrate` 스킬·역할 서브에이전트·Workflow 스크립트 2개가 든 `orchestra` 플러그인을 제공합니다. 저장소는 `yoyowasi/codex-orchestrator-kit`입니다. 개인 프로젝트이며 OpenAI나 Anthropic의 공식 제품이 아닙니다.
 
 ## 하는 일
 
@@ -83,14 +83,14 @@ $orchestrate 이 프로젝트에 회원가입과 로그인을 추가해줘. 필�
 | 팩 | Claude Code 플러그인 | 역할 |
 |---|---|---|
 | `core`(항상 설치) | `orchestra` | researcher, architect, frontend-developer, backend-developer, qa-engineer, reviewer, security-reviewer, evidence-reviewer, technical-writer |
-| `dev` | `orchestra-dev` | database-engineer, devops-engineer, performance-engineer, automation-engineer, ux-designer, accessibility-auditor |
+| `dev` | `orchestra-dev` | database-engineer, data-engineer, ml-engineer, mobile-developer, legacy-modernization-engineer, devops-engineer, performance-engineer, automation-engineer, ux-designer, ui-designer, accessibility-auditor |
 | `docs` | `orchestra-docs` | data-analyst, document-producer, pdf-specialist, spreadsheet-modeler, presentation-designer, visual-creator |
-| `business` | `orchestra-business` | business-analyst, financial-modeler, product-manager, user-insights-analyst, operations-designer, app-operator |
-| `content` | `orchestra-content` | content-strategist, creative-writer, localization-editor, learning-designer |
+| `business` | `orchestra-business` | business-analyst, financial-modeler, product-manager, project-manager, compliance-reviewer, user-insights-analyst, operations-designer, app-operator |
+| `content` | `orchestra-content` | content-strategist, creative-writer, copy-editor, ux-writer, localization-editor, learning-designer |
 | `agent-dev` | `orchestra-agent-dev` | skill-author, plugin-developer |
 | `codex-only` | 없음(Codex 전용) | openai-solution-designer, sites-builder |
 
-실행 시 이름: Claude Code 플러그인 에이전트는 `orchestra:<id>` 또는 `orchestra-<pack>:<id>`(스크립트 설치는 `<id>`), Codex 역할은 밑줄 표기(`evidence_reviewer`)입니다. 읽기 전용 역할은 architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer이고, 읽기+셸 역할(테스트 실행 가능, 수정 금지 지시)은 reviewer, security-reviewer입니다. 실제로 무엇이 강제되는지는 [한계](#한계)를 보세요.
+실행 시 이름: Claude Code 플러그인 에이전트는 `orchestra:<id>` 또는 `orchestra-<pack>:<id>`(스크립트 설치는 `<id>`), Codex 역할은 밑줄 표기(`evidence_reviewer`)입니다. 읽기 전용 역할은 architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer이고, 읽기+셸 역할(테스트 실행 가능, 수정 금지 지시)은 reviewer, security-reviewer, compliance-reviewer입니다. 실제로 무엇이 강제되는지는 [한계](#한계)를 보세요.
 
 ## 요청 예시
 

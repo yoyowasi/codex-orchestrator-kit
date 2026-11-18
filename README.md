@@ -4,7 +4,7 @@ English | [한국어](README.ko.md)
 
 **An expert-team orchestration skill for Codex and Claude Code that picks the specialists, models and skills a task needs, lets them review each other's work, and verifies the integrated result before reporting.**
 
-It ships 35 role definitions (33 on Claude Code) in installable packs, covering software, research, business, data, documents, content and operations. Codex gets the `$orchestrate` skill and custom agents; Claude Code gets the `orchestra` plugins with the `/orchestra:orchestrate` skill, role subagents and two Workflow scripts. It lives in the `yoyowasi/codex-orchestrator-kit` repository. This is a personal project, not an official OpenAI or Anthropic product.
+It ships 44 role definitions (42 on Claude Code) in installable packs, covering software, research, business, data, documents, content and operations. Codex gets the `$orchestrate` skill and custom agents; Claude Code gets the `orchestra` plugins with the `/orchestra:orchestrate` skill, role subagents and two Workflow scripts. It lives in the `yoyowasi/codex-orchestrator-kit` repository. This is a personal project, not an official OpenAI or Anthropic product.
 
 ## What it does
 
@@ -83,14 +83,14 @@ $orchestrate Add sign-up and login to this project. Pick the specialists and mod
 | Pack | Claude Code plugin | Roles |
 |---|---|---|
 | `core` (always installed) | `orchestra` | researcher, architect, frontend-developer, backend-developer, qa-engineer, reviewer, security-reviewer, evidence-reviewer, technical-writer |
-| `dev` | `orchestra-dev` | database-engineer, devops-engineer, performance-engineer, automation-engineer, ux-designer, accessibility-auditor |
+| `dev` | `orchestra-dev` | database-engineer, data-engineer, ml-engineer, mobile-developer, legacy-modernization-engineer, devops-engineer, performance-engineer, automation-engineer, ux-designer, ui-designer, accessibility-auditor |
 | `docs` | `orchestra-docs` | data-analyst, document-producer, pdf-specialist, spreadsheet-modeler, presentation-designer, visual-creator |
-| `business` | `orchestra-business` | business-analyst, financial-modeler, product-manager, user-insights-analyst, operations-designer, app-operator |
-| `content` | `orchestra-content` | content-strategist, creative-writer, localization-editor, learning-designer |
+| `business` | `orchestra-business` | business-analyst, financial-modeler, product-manager, project-manager, compliance-reviewer, user-insights-analyst, operations-designer, app-operator |
+| `content` | `orchestra-content` | content-strategist, creative-writer, copy-editor, ux-writer, localization-editor, learning-designer |
 | `agent-dev` | `orchestra-agent-dev` | skill-author, plugin-developer |
 | `codex-only` | none (Codex only) | openai-solution-designer, sites-builder |
 
-Runtime names: Claude Code plugin agents are `orchestra:<id>` or `orchestra-<pack>:<id>` (bare `<id>` with the script install); Codex roles use snake_case (`evidence_reviewer`). Read-only roles: architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer. Read-shell roles (may run tests, told not to edit): reviewer, security-reviewer. See [Limits](#limits) for what that really enforces.
+Runtime names: Claude Code plugin agents are `orchestra:<id>` or `orchestra-<pack>:<id>` (bare `<id>` with the script install); Codex roles use snake_case (`evidence_reviewer`). Read-only roles: architect, evidence-reviewer, accessibility-auditor, user-insights-analyst, openai-solution-designer. Read-shell roles (may run tests, told not to edit): reviewer, security-reviewer, compliance-reviewer. See [Limits](#limits) for what that really enforces.
 
 ## Example requests
 

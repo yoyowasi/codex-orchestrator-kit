@@ -33,11 +33,16 @@ Report access honestly: say "read-only by instruction" whenever tools do not enf
 | [reviewer](roles/reviewer.md) | `orchestra:reviewer` | core | read-shell | Reviews a code change for correctness defects, behavior regressions, broken contracts and missing tests without editing files; pick it for independent review after implementation. |
 | [security-reviewer](roles/security-reviewer.md) | `orchestra:security-reviewer` | core | read-shell | Reviews code and configuration for reachable flaws in authentication, authorization, input handling, secrets and dependencies without editing files; pick it when trust boundaries change. |
 | [technical-writer](roles/technical-writer.md) | `orchestra:technical-writer` | core | write | Writes README files, API references, installation guides and user manuals that match the actual code and product behavior; pick it for technical documentation. |
-| [accessibility-auditor](roles/accessibility-auditor.md) | `orchestra-dev:accessibility-auditor` | dev | read-only | Audits web UI source for accessibility and interface-guideline compliance without modifying files; pick it for read-only UI reviews, with a peer who can run the screens for live checks. |
+| [accessibility-auditor](roles/accessibility-auditor.md) | `orchestra-dev:accessibility-auditor` | dev | read-only | Audits web and mobile UI source for accessibility and interface-guideline compliance without modifying files; pick it for read-only UI reviews, with a peer who can run the screens for live checks. |
 | [automation-engineer](roles/automation-engineer.md) | `orchestra-dev:automation-engineer` | dev | write | Writes scripts, file-processing jobs and tool integrations that automate repetitive tasks; pick it for task automation, not CI/CD pipelines or one-off app UI operations. |
+| [data-engineer](roles/data-engineer.md) | `orchestra-dev:data-engineer` | dev | write | Builds and fixes data pipelines: ingestion, ETL/ELT, scheduling, data quality checks and reconciliation between systems; pick it for moving and transforming data, not schema design or analysis. |
 | [database-engineer](roles/database-engineer.md) | `orchestra-dev:database-engineer` | dev | write | Designs and implements schemas, SQL, indexes, data integrity and migrations; pick it for database-level work, not application data-access code or environment rollout. |
 | [devops-engineer](roles/devops-engineer.md) | `orchestra-dev:devops-engineer` | dev | write | Sets up builds, CI/CD, containers, environment configuration and observability; pick it for pipeline and release plumbing, with real deploys returned for approval. |
+| [legacy-modernization-engineer](roles/legacy-modernization-engineer.md) | `orchestra-dev:legacy-modernization-engineer` | dev | write | Maps a legacy system's real behavior and plans or carries out its port to a new stack with parity checks; pick it when old code must be replaced without losing behavior. |
+| [ml-engineer](roles/ml-engineer.md) | `orchestra-dev:ml-engineer` | dev | write | Builds and evaluates machine learning and LLM features: datasets, prompts, evaluation sets, metrics and failure analysis; pick it when model behavior must be measured, not assumed. |
+| [mobile-developer](roles/mobile-developer.md) | `orchestra-dev:mobile-developer` | dev | write | Implements native or cross-platform mobile apps: screens, navigation, device APIs, offline state and build settings; pick it for iOS or Android app code changes. |
 | [performance-engineer](roles/performance-engineer.md) | `orchestra-dev:performance-engineer` | dev | write | Measures and diagnoses latency, rendering, memory, bundle size and throughput bottlenecks with before/after evidence; pick it when speed or resource use is the problem. |
+| [ui-designer](roles/ui-designer.md) | `orchestra-dev:ui-designer` | dev | write | Benchmarks shipped products, open-source design systems and design galleries, then sets a distinctive visual language as tokens and specs; pick it when UI must not look templated or AI-made. |
 | [ux-designer](roles/ux-designer.md) | `orchestra-dev:ux-designer` | dev | write | Designs information architecture, user flows, screen layouts and interaction states for new or changed UI; pick it before or alongside frontend implementation. |
 | [data-analyst](roles/data-analyst.md) | `orchestra-docs:data-analyst` | docs | write | Cleans and explores data, defines metrics, and produces reproducible analyses, charts and findings; pick it when the question is what the data shows, not how a workbook is built. |
 | [document-producer](roles/document-producer.md) | `orchestra-docs:document-producer` | docs | write | Produces and edits formatted DOCX or Google Docs files (layout, tables, figures, comments, tracked changes) and checks rendered pages; pick it when the deliverable is a polished document file. |
@@ -47,14 +52,18 @@ Report access honestly: say "read-only by instruction" whenever tools do not enf
 | [visual-creator](roles/visual-creator.md) | `orchestra-docs:visual-creator` | docs | write | Creates and edits standalone image assets such as illustrations, photos, textures and mockups, and reviews them for fit and consistency; pick it for new visuals, not UI code or data charts. |
 | [app-operator](roles/app-operator.md) | `orchestra-business:app-operator` | business | write | Performs one-off tasks in a desktop or browser app the session can actually reach and confirms the resulting state; pick it for hands-on UI work, not repeatable automation. |
 | [business-analyst](roles/business-analyst.md) | `orchestra-business:business-analyst` | business | write | Analyzes current business processes, alternatives, costs, benefits and assumptions to support a decision; pick it before modeling numbers in detail or designing procedures. |
+| [compliance-reviewer](roles/compliance-reviewer.md) | `orchestra-business:compliance-reviewer` | business | read-shell | Checks work against named regulations, licenses and internal policies (privacy, open-source licenses, retention) without editing files; pick it before release, not for legal advice. |
 | [financial-modeler](roles/financial-modeler.md) | `orchestra-business:financial-modeler` | business | write | Builds scenario models of cost, revenue and cash flow with documented assumptions and sensitivity analysis; pick it when a decision needs numbers projected over time. |
 | [operations-designer](roles/operations-designer.md) | `orchestra-business:operations-designer` | business | write | Turns analyzed business work into runnable operating procedures with clear owners, handoffs and exception paths (SOPs, responsibility matrices, checklists); pick it once the analysis is settled. |
 | [product-manager](roles/product-manager.md) | `orchestra-business:product-manager` | business | write | Turns user needs into product scope, priorities, user stories and acceptance criteria; pick it when the question is what to build and how success will be judged. |
+| [project-manager](roles/project-manager.md) | `orchestra-business:project-manager` | business | write | Plans and tracks delivery: work breakdown, schedule, dependencies, risks, owners and status reports; pick it when the question is when and how work gets done, not what to build. |
 | [user-insights-analyst](roles/user-insights-analyst.md) | `orchestra-business:user-insights-analyst` | business | read-only | Reads provided interviews, surveys, support tickets and usage notes to find recurring user tasks and problems backed by quoted evidence; pick it for qualitative user insight without file edits. |
 | [content-strategist](roles/content-strategist.md) | `orchestra-content:content-strategist` | content | write | Defines audience, key messages and content plans and writes marketing or promotional copy; pick it for positioning, campaigns and channel-specific copy. |
+| [copy-editor](roles/copy-editor.md) | `orchestra-content:copy-editor` | content | write | Edits existing text for correctness, clarity, consistency and house style without changing its meaning; pick it for proofreading and line editing, not new copy or translation. |
 | [creative-writer](roles/creative-writer.md) | `orchestra-content:creative-writer` | content | write | Writes and revises creative manuscripts such as stories, scripts and essays; pick it for narrative or literary work rather than marketing copy or documentation. |
 | [learning-designer](roles/learning-designer.md) | `orchestra-content:learning-designer` | content | write | Designs learning objectives, curricula, lesson plans, exercises and assessments; pick it for training or course material where learners must reach measurable outcomes. |
 | [localization-editor](roles/localization-editor.md) | `orchestra-content:localization-editor` | content | write | Localizes existing text for a target locale with consistent meaning, terminology and tone; pick it for translation, glossary work and locale-format review. |
+| [ux-writer](roles/ux-writer.md) | `orchestra-content:ux-writer` | content | write | Writes interface text: labels, buttons, errors, empty states, onboarding and confirmations, consistent in voice and length; pick it for product microcopy, not marketing copy. |
 | [plugin-developer](roles/plugin-developer.md) | `orchestra-agent-dev:plugin-developer` | agent-dev | write | Builds and validates Claude Code plugins and marketplaces and Codex plugins, including manifests, layout and install steps; pick it for packaging and distributing agent extensions. |
 | [skill-author](roles/skill-author.md) | `orchestra-agent-dev:skill-author` | agent-dev | write | Designs, writes and tests reusable agent skills, including artifact-template skills, for Claude Code and Codex; pick it when a repeated workflow or deliverable should become a skill. |
 
@@ -81,7 +90,20 @@ pack = "content"
 description = "One English sentence: what it does and when to pick it."
 access = "read-only"
 instructions = '''
-- One rule per line; do not repeat the common working rules.
+## Before you start
+- What to confirm first; which gaps block the work.
+
+## Method
+1. Ordered steps of the profession.
+
+## Deliverable
+- Named fields or sections, the scale used, what "done" means.
+
+## Quality checks
+- Checks on the role's own output.
+
+## Handoffs and boundaries
+- Peers, role-specific gated actions, boundaries. Do not repeat the common working rules.
 '''
 ```
 
