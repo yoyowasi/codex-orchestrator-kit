@@ -55,7 +55,7 @@ Every role's `instructions` use these `##` headings, in this order, so every bri
 | `## Quality checks` | 3-6 verifiable checks on the role's own output, including at most two `Avoid: ...` bullets for the profession's typical failure modes. |
 | `## Handoffs and boundaries` | Peers and what is exchanged; role-specific gated actions and the extra fields their approval request needs; the no-edit rule for read-only and read-shell roles; boundaries to other roles. |
 
-Keep each role to about 18-32 lines, one rule per bullet. Only `##` headings: the generated brief adds a `#` title and the common rules add `## Working rules`.
+Keep each role to about 18-32 lines, one rule per bullet. Only `##` headings: the generated brief adds a `#` title and the common rules add `## Working rules`. The build checks the instructions rendered for each platform: exactly these five headings in this order, and no other heading level outside fenced code blocks. Role ids that YAML reads as a boolean or null (`true`, `false`, `yes`, `no`, `on`, `off`, `null`, `y`, `n`) are rejected.
 
 Shared scales, so outputs read the same across roles:
 
@@ -102,14 +102,15 @@ Limits that the docs must state honestly:
 - `{{version}}`, `{{repository}}` and `{{marketplace}}` render the manifest values of the same name (for example `/plugin install orchestra@{{marketplace}}`).
 - `{{role-catalog}}` (only in `src/skill/references/roles.md`) renders the generated role table for that platform.
 - Only Markdown sources and role `instructions` are rendered. One-line values (descriptions, manifest strings) must not contain `{{` or `<!--`; the build rejects them.
-- There is no escape for a literal `{{...}}` or a literal `<!-- @name -->` marker in rendered text: every `{{...}}` must be a known token. Rephrase such examples, or describe them in prose.
+- There is no escape for a literal `{{...}}` or a literal `<!-- @name -->` marker in rendered text: every `{{...}}` must be a known token. An unclosed `{{`, a token split across lines, or a token missing its opening braces (such as `{role:reviewer}}`) is a build error; other closing braces, as in JSON or code examples, are ordinary text. Rephrase such examples, or describe them in prose.
+- `SKILL.md` and `references/roles.md` must render for both platforms; `SKILL.md` needs `---` frontmatter with `name:` equal to the manifest's `[skill] name`, `roles.md` must contain `{{role-catalog}}`, and `[skill] short_description` must be 25 to 64 characters. Every pack must have at least one role built for each of its platforms.
 - Role-instruction errors report the line in the role file (`src/roles/<id>.toml:<line>`).
 - In role instructions, refer to a skill as "the installed <capability> skill (see skill routing)"; the common working rules define what "see skill routing" means for an agent, and Codex-only or Claude-only skills go in platform blocks.
 
 ## Workflow scripts (`src/workflows/<name>.js`)
 
 - Only `*.js` files, no subdirectories (dotfiles are ignored).
-- Each file starts with `export const meta = { name: '<name>'`: `meta.name` comes first and equals the kebab-case file stem, because the script install copies the file by name and Claude Code runs a personal workflow as `/<meta.name>`. Names start with `team-` so they never become generic commands like `/review`.
+- Each file starts with `export const meta = { name: '<name>'`: `meta.name` comes first and equals the kebab-case file stem, because the script install copies the file by name and Claude Code runs a personal workflow as `/<meta.name>`. Files are named `team-<name>.js` (the build enforces it) so they never become generic commands like `/review`.
 - Copied verbatim (no template rendering) to `plugins/orchestra/workflows/`. `tests/workflows.test.mjs` compiles them and checks that every `/orchestra:<name>` in the docs exists.
 
 ### Claude Code runtime names
@@ -143,6 +144,8 @@ The role catalog table (id, runtime name, pack, access, description) is generate
 python scripts/build.py           # regenerate everything
 python scripts/build.py --check   # exit 1 and list files that differ (CI)
 ```
+
+Exit codes: 0 success, 1 drift found by `--check`, 2 an invalid source or a file-system error (one line, no traceback).
 
 Python API used by tests: `build.render(src: Path) -> dict[str, bytes]` (repo-relative POSIX path → file bytes, no I/O besides reading `src`), `build.write(outputs, root: Path)`, `build.check(outputs, root: Path) -> list[str]` (differing or stale paths).
 

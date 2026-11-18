@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.2.2 - 2026-11-18
+
+Fixes for the minor defects the review of 2.2.0 found.
+
+### Changed
+
+- `/orchestra:team-research` also returns `subQuestions`, `failedSubQuestions`, `gaps` and `assumptions`, so a caller sees sub-questions that returned nothing without reading the log.
+- `/orchestra:team-review` verifies the missing-test lens with its own criterion: a finding stands when the changed behavior is real, reachable and exercised by no existing test. Before, every lens was asked for a traceable failure path, which a missing test cannot have.
+- install.py: `--packs all` is remembered as all (`all_packs` in the install manifest), so a later rerun without `--packs` also installs packs a newer release adds. A previously selected pack the release no longer has is reported in the notes.
+- build.py: exit code 2 now also covers file-system errors (one line, no traceback); 1 stays reserved for drift in `--check`.
+
+### Fixed
+
+- install.py: a write that fails midway (a locked or read-only file) leaves no temporary file, and the install manifest still records what was written and the new pack selection, so a rerun finishes the job. A failed move to a new `--skills-dir` or `--bin-dir` keeps the previous location recorded until its files are gone.
+- install.py: `config.toml` is written only when the subagent limit changes. A `config.toml` that is a file link no longer blocks every install; when it must change, the error names the link.
+- install.py: on Linux and macOS, rewriting a file such as `config.toml` keeps its permission bits instead of widening them to the umask default.
+- install.py: an uninstall no longer removes a directory link (a junction or symlink) that replaced a directory the install created.
+- install.py: on a case-insensitive file system, a role file that differs only in case is treated as the same file (an ordinary conflict) instead of a duplicate role.
+- install.py: a manifest of the other target, and a manifest that names files outside the install locations (for example after moving a home directory), fail with messages that say how to fix them, including the `--bin-dir` or `--skills-dir` to pass. `codex-team.cmd` is accepted only in the recorded or current bin directory, or, for a manifest from an earlier release without a recorded bin directory, in one of its recorded roots.
+- build.py: invalid sources no longer build green. A missing or empty `SKILL.md` or `references/roles.md` for either platform, `SKILL.md` without frontmatter `name`, a missing `{{role-catalog}}`, a `short_description` outside 25 to 64 characters, roles without the five `##` headings in order or with other heading levels, an unclosed `{{` or a token missing its opening braces, a pack with no role for one of its platforms, a Workflow file not named `team-<name>.js`, role ids that YAML reads as booleans or null, and U+FEFF, U+FFFE or U+FFFF in one-line values are now build errors.
+- codex-team: `team_wait` falls back to 30 seconds for a non-numeric `seconds`, returns early only for a worker that starts waiting during the call (all waiting workers are listed in `waiting`), and bounds each read by the time left so the call stays under the MCP tool timeout.
+- codex-team: the MCP server answers malformed input with JSON-RPC errors (-32700, -32600), handles requests concurrently so a long `team_wait` no longer blocks other tools, and still runs `team_dispatch` and `team_interrupt` one at a time.
+- codex-team: `owned_paths` fold Windows aliases (trailing dots or spaces, 8.3 names, junctions) and refuse `:`; a thread the server has unloaded no longer counts as busy because of a stale in-progress turn; and dispatch re-reads `team.json` before each write and changes only its own worker, which narrows the race with a second MCP process for the same team.
+
 ## 2.2.1 - 2026-11-18
 
 Fixes for the four major defects a second review of 2.2.0 found.

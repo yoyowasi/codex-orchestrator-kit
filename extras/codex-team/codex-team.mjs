@@ -288,12 +288,38 @@ async function attach(manifest,role) {
   process.exitCode=code||0;
 }
 
+// Canonical form of a path: the longest existing prefix is resolved through the file system
+// (8.3 short names, junctions, symlinks, real letter case) and the rest is kept as written.
+function canonicalPath(p){
+  const rest=[];
+  let cur=p;
+  while(true){
+    try{return path.join(fs.realpathSync.native(cur),...rest.reverse());}
+    catch{
+      const parent=path.dirname(cur);
+      if(parent===cur)return p;
+      rest.push(path.basename(cur));cur=parent;
+    }
+  }
+}
+const OUTSIDE='A worker cannot own the whole project root or a path outside it.';
 export function normalizeOwned(project,values) {
   return [...new Set(values.map(value=>{
     if(typeof value!=='string' || !value.trim() || /[*?]/.test(value)) throw new Error('owned_paths takes relative file or folder paths. Globs are not supported.');
-    const abs=path.resolve(project,value), rel=path.relative(project,abs);
-    if(!rel || rel==='..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new Error('A worker cannot own the whole project root or a path outside it.');
-    return rel.replaceAll('\\','/').replace(/\/$/,'').toLowerCase();
+    let rel=path.relative(project,path.resolve(project,value));
+    if(!rel || rel==='..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new Error(OUTSIDE);
+    if(process.platform==='win32'){
+      // Win32 drops trailing dots and spaces from a segment, so `src.` and `src ` are `src`, and
+      // `:` inside a segment is NTFS stream syntax (`src::$DATA`).
+      const segments=rel.split(path.sep).map(seg=>seg.replace(/[. ]+$/,''));
+      if(segments.some(seg=>!seg || seg.includes(':'))) throw new Error('owned_paths cannot contain ":" or segments that end in dots or spaces only.');
+      rel=segments.join(path.sep);
+    }
+    // Resolve 8.3 names and junctions; the real location must stay inside the real project.
+    const realProject=canonicalPath(path.resolve(project));
+    const real=path.relative(realProject,canonicalPath(path.join(path.resolve(project),rel)));
+    if(!real || real==='..' || real.startsWith(`..${path.sep}`) || path.isAbsolute(real)) throw new Error(OUTSIDE);
+    return real.replaceAll('\\','/').replace(/\/$/,'').toLowerCase();
   }))];
 }
 export const scopesOverlap=(a,b)=>a===b || a.startsWith(b+'/') || b.startsWith(a+'/');
@@ -306,15 +332,32 @@ function briefThread(thread) {
     text:(finals.length?finals:messages).map(i=>i.text||'').join('\n').slice(-18000)};
 }
 
+// A thread the server has unloaded is not running, whatever its last turn says: a crashed
+// session leaves the turn marked inProgress for good.
+export const isRunning=s=>s.status?.type!=='notLoaded' && (s.status?.type==='active' || s.turnStatus==='inProgress');
+const isWaiting=s=>!!s.status?.activeFlags?.some(f=>/waiting|approval|input/i.test(typeof f==='string'?f:JSON.stringify(f)));
+// team_wait stays below the MCP tool timeout (65 s) with room to spare.
+const WAIT_MAX_SECONDS=45, WAIT_HARD_MS=55000;
+
 export class TeamControl {
-  constructor(manifest,rpc){this.manifest=manifest;this.rpc=rpc;}
+  constructor(manifest,rpc,{now=Date.now,sleep=delay}={}){this.manifest=manifest;this.rpc=rpc;this.now=now;this.sleep=sleep;}
   team(){return readJson(this.manifest);}
   models(){return this.team().models||teamModels();}
-  async snapshot(role){
+  async snapshot(role,timeout=30000){
     const member=this.team().members[role];
     if(!member)throw new Error(`Unknown team role: ${role}`);
-    const result=await this.rpc.call('thread/read',{threadId:member.threadId,includeTurns:true});
+    const result=await this.rpc.call('thread/read',{threadId:member.threadId,includeTurns:true},timeout);
     return {role,description:member.description,model:member.model,reasoningEffort:member.reasoningEffort,modelReason:member.modelReason,...briefThread(result.thread)};
+  }
+  // Re-read the manifest right before the write and change only this member's fields, so an
+  // update made meanwhile by another member is not lost. This narrows the race with a second
+  // MCP process for the same team (a restarted coordinator window); it does not remove it,
+  // because the read and the write are still two separate steps without a file lock.
+  updateMember(role,change){
+    const team=this.team();
+    if(!team.members[role])return;
+    change(team.members[role]);
+    saveJson(this.manifest,team);
   }
   async members(){return await Promise.all(Object.keys(this.team().members).map(role=>this.snapshot(role)));}
   async dispatch({role,task,owned_paths=[],read_only=false,model,model_reason}){
@@ -325,7 +368,7 @@ export class TeamControl {
     const team=this.team(), member=team.members[role];
     if(!member)throw new Error(`Unknown team role: ${role}`);
     const current=await this.snapshot(role);
-    if(current.status?.type==='active' || current.turnStatus==='inProgress')throw new Error(`${role} is busy. Wait for it to finish, or interrupt it before reassigning.`);
+    if(isRunning(current))throw new Error(`${role} is busy. Wait for it to finish, or interrupt it before reassigning.`);
     read_only=read_only||member.readOnly;
     const owned=read_only?[]:normalizeOwned(team.project,owned_paths);
     if(!read_only&&!owned.length)throw new Error('Work that changes files needs owned_paths. For analysis only, set read_only=true.');
@@ -333,7 +376,7 @@ export class TeamControl {
       if(other.role===role || !other.ownedPaths?.length)continue;
       if(!owned.some(a=>other.ownedPaths.some(b=>scopesOverlap(a,b))))continue;
       const s=await this.snapshot(other.role);
-      if(s.status?.type==='active'||s.turnStatus==='inProgress')throw new Error(`File ownership conflict: assign this after ${other.role} finishes.`);
+      if(isRunning(s))throw new Error(`File ownership conflict: assign this after ${other.role} finishes.`);
     }
     const prompt=`Assignment from the coordinator\nRole: ${role}\nModel: ${selected.model} / ${selected.effort}\nReason: ${modelReason}\nOwned paths: ${read_only?'none (read and analyze only)':owned.join(', ')}\n${task}\n\nReport your scope, the actual result, changed files and verification results.`;
     if(current.status?.type==='notLoaded')await this.rpc.call('thread/resume',{threadId:member.threadId});
@@ -342,32 +385,46 @@ export class TeamControl {
     // the overlap check must already see its paths. Only a request that surely did not start
     // (refused by the server, or never sent) releases them.
     const previousOwned=member.ownedPaths;
-    member.ownedPaths=owned;saveJson(this.manifest,team);
+    this.updateMember(role,m=>{m.ownedPaths=owned;});
     let result;
     try{result=await this.rpc.call('turn/start',{threadId:member.threadId,input:[{type:'text',text:prompt}],sandboxPolicy,...selected});}
     catch(error){
-      if(error.rpcError||error.notSent){member.ownedPaths=previousOwned;saveJson(this.manifest,team);}
+      if(error.rpcError||error.notSent)this.updateMember(role,m=>{m.ownedPaths=previousOwned;});
       throw error;
     }
-    member.lastTurnId=result.turn.id;
-    member.model=selected.model;member.reasoningEffort=selected.effort;member.modelReason=modelReason;
-    saveJson(this.manifest,team);
+    this.updateMember(role,m=>{m.lastTurnId=result.turn.id;m.model=selected.model;m.reasoningEffort=selected.effort;m.modelReason=modelReason;});
     return {role,threadId:member.threadId,turnId:result.turn.id,status:result.turn.status,ownedPaths:owned,model:selected.model,reasoningEffort:selected.effort,modelReason};
   }
-  async wait({roles,seconds=30}={}){
+  async wait({roles,seconds}={}){
     roles=roles?.length?roles:Object.keys(this.team().members);
-    const until=Date.now()+Math.min(45,Math.max(1,seconds))*1000;
+    const n=typeof seconds==='string'&&seconds.trim()?Number(seconds):seconds;
+    // Anything that is not a number falls back to 30; Infinity clamps to the cap like any large value.
+    const secs=typeof n==='number'&&!Number.isNaN(n)?n:30;
+    const start=this.now();
+    const until=start+Math.min(WAIT_MAX_SECONDS,Math.max(1,secs))*1000;
+    const hard=start+WAIT_HARD_MS;
+    let baseline=null;
     while(true){
-      const states=await Promise.all(roles.map(role=>this.snapshot(role)));
-      const active=states.filter(s=>s.status?.type==='active'||s.turnStatus==='inProgress');
-      const needsInput=states.some(s=>s.status?.activeFlags?.some(f=>/waiting|approval|input/i.test(typeof f==='string'?f:JSON.stringify(f))));
-      if(!active.length||needsInput||Date.now()>=until)return {timedOut:!!active.length&&!needsInput,needsInput,members:states};
-      await delay(2000);
+      // Each read is bounded by the time left, so the whole call stays under the tool timeout.
+      const states=await Promise.all(roles.map(role=>this.snapshot(role,Math.max(1000,Math.min(30000,hard-this.now())))));
+      const waitingRoles=states.filter(isWaiting).map(s=>s.role);
+      // A worker that was already waiting when the call began does not end the wait; only one
+      // that starts waiting during this call does.
+      if(!baseline)baseline=new Set(waitingRoles);
+      // A worker that answers its prompt leaves the baseline, so its next prompt ends the wait.
+      else for(const r of [...baseline])if(!waitingRoles.includes(r))baseline.delete(r);
+      const newlyWaiting=waitingRoles.filter(r=>!baseline.has(r));
+      // A worker already waiting for the user cannot finish on its own, so it does not hold the wait open.
+      const active=states.filter(s=>isRunning(s)&&!baseline.has(s.role));
+      const now=this.now();
+      if(!active.length||newlyWaiting.length||now>=until)
+        return {timedOut:!!active.length&&!newlyWaiting.length,needsInput:waitingRoles.length>0,waiting:waitingRoles,members:states};
+      await this.sleep(Math.min(2000,until-now));
     }
   }
   async interrupt({role}){
     const member=this.team().members[role], state=await this.snapshot(role);
-    if(!state.turnId || state.turnStatus!=='inProgress')return {role,status:'not_running'};
+    if(!state.turnId || state.turnStatus!=='inProgress' || state.status?.type==='notLoaded')return {role,status:'not_running'};
     await this.rpc.call('turn/interrupt',{threadId:member.threadId,turnId:state.turnId});
     return {role,status:'interrupt_requested'};
   }
@@ -382,36 +439,54 @@ export const teamTools=models=>[
   toolSchema('team_interrupt','Interrupt only the current work of one worker in this team.',{role:{type:'string'}},['role'])
 ];
 
-async function mcp(manifest){
-  const team=readJson(manifest), link=new TeamLink(()=>new Rpc(team.url).open()), control=new TeamControl(manifest,link);
-  await link.connection();
-  const lines=readline.createInterface({input:process.stdin,crlfDelay:Infinity});
-  const send=message=>process.stdout.write(JSON.stringify(message)+'\n');
-  for await(const line of lines){
-    let request;
-    try{request=JSON.parse(line);}catch{continue;}
-    if(request.id===undefined)continue;
+// Requests run concurrently, so a long team_wait does not block ping or the read tools. Calls
+// that change team state go through one queue, so two dispatches never interleave.
+export async function serveMcp(control,input,output){
+  const send=message=>output.write(JSON.stringify(message)+'\n');
+  const fail=(id,code,message)=>send({jsonrpc:'2.0',id,error:{code,message}});
+  let queue=Promise.resolve();
+  const serialized=fn=>{const run=queue.then(fn);queue=run.catch(()=>{});return run;};
+  const callTool=(name,args)=>{
+    if(name==='team_members')return control.members();
+    if(name==='team_dispatch')return serialized(()=>control.dispatch(args));
+    if(name==='team_wait')return control.wait(args);
+    if(name==='team_result')return control.snapshot(args.role);
+    if(name==='team_interrupt')return serialized(()=>control.interrupt(args));
+    throw new Error('Unknown tool');
+  };
+  const handle=async request=>{
     try{
       let result;
       if(request.method==='initialize')result={protocolVersion:request.params?.protocolVersion||'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'codex-team',version:'1.0.0'}};
       else if(request.method==='ping')result={};
       else if(request.method==='tools/list')result={tools:teamTools(control.models())};
       else if(request.method==='tools/call'){
-        const {name,arguments:args={}}=request.params;
-        try{
-          let data;
-          if(name==='team_members')data=await control.members();
-          else if(name==='team_dispatch')data=await control.dispatch(args);
-          else if(name==='team_wait')data=await control.wait(args);
-          else if(name==='team_result')data=await control.snapshot(args.role);
-          else if(name==='team_interrupt')data=await control.interrupt(args);
-          else throw new Error('Unknown tool');
-          result={content:[{type:'text',text:JSON.stringify(data)}]};
-        }catch(error){result={isError:true,content:[{type:'text',text:error.message}]};}
-      }else{send({jsonrpc:'2.0',id:request.id,error:{code:-32601,message:'Method not found'}});continue;}
+        const name=request.params?.name, args=request.params?.arguments??{};
+        try{result={content:[{type:'text',text:JSON.stringify(await callTool(name,args))}]};}
+        catch(error){result={isError:true,content:[{type:'text',text:error.message}]};}
+      }else return fail(request.id,-32601,'Method not found');
       send({jsonrpc:'2.0',id:request.id,result});
-    }catch(error){send({jsonrpc:'2.0',id:request.id,error:{code:-32603,message:error.message}});}
+    }catch(error){fail(request.id,-32603,error.message);}
+  };
+  const inflight=new Set();
+  const lines=readline.createInterface({input,crlfDelay:Infinity});
+  for await(const line of lines){
+    if(!line.trim())continue;
+    let request;
+    try{request=JSON.parse(line);}catch{fail(null,-32700,'Parse error');continue;}
+    if(Array.isArray(request)){fail(null,-32600,'Batch requests are not supported');continue;}
+    if(!request||typeof request!=='object'||typeof request.method!=='string'){fail(request?.id??null,-32600,'Invalid request');continue;}
+    if(request.id===undefined)continue;
+    const p=handle(request).finally(()=>inflight.delete(p));
+    inflight.add(p);
   }
+  await Promise.all(inflight);
+}
+
+async function mcp(manifest){
+  const team=readJson(manifest), link=new TeamLink(()=>new Rpc(team.url).open()), control=new TeamControl(manifest,link);
+  await link.connection();
+  await serveMcp(control,process.stdin,process.stdout);
   link.close();
 }
 

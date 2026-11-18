@@ -148,6 +148,9 @@ const findPrompt = lens => [
   READ_ONLY,
 ].join('\n')
 
+const DEFAULT_REFUTE = 'Set refuted=true if the scenario cannot happen, is already handled, is not in code the target touches or affects, or cannot be confirmed from the code. Set refuted=false only when you can trace the failure path.'
+// A missing-test finding has no failure path to trace: it stands when the behavior is real.
+const TESTS_REFUTE = 'Set refuted=false when the changed behavior is real, reachable, and no existing test exercises it (search the test files and the callers before you decide). Set refuted=true when an existing test already covers it or the behavior did not change in this target.'
 const verifyPrompt = (f, lens) => [
   context, '',
   `A ${lens.id} reviewer reported the finding below. Independently try to REFUTE it.`,
@@ -156,7 +159,7 @@ const verifyPrompt = (f, lens) => [
   `Scenario: ${f.scenario}`,
   `Claimed severity: ${f.severity}`,
   lens.scale.guide, '',
-  'Read the code yourself. Set refuted=true if the scenario cannot happen, is already handled, is not in code the target touches or affects, or cannot be confirmed from the code. Set refuted=false only when you can trace the failure path.',
+  'Read the code yourself. ' + (lens.id === 'tests' ? TESTS_REFUTE : DEFAULT_REFUTE),
   READ_ONLY,
 ].join('\n')
 

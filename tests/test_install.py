@@ -1,8 +1,11 @@
+import contextlib
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
+import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -69,6 +72,51 @@ def make_generated_tree(repo: Path):
 def tree(root: Path):
     return sorted(path.relative_to(root).as_posix() for path in root.rglob('*') if path.is_file()) \
         if root.exists() else []
+
+
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def dir_link(link: Path, target: Path):
+    """A directory link: a junction on Windows (no symlink rights needed), a symlink elsewhere."""
+    if os.name == 'nt':
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+@contextlib.contextmanager
+def file_link(link: Path, target: Path):
+    """A file symlink. Without symlink rights (Windows without Developer Mode) it is emulated: a
+    regular file with the target's bytes that Path.is_symlink and Path.resolve report as a link."""
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pass
+    else:
+        yield
+        return
+    link.write_bytes(target.read_bytes())
+    resolve, is_symlink = Path.resolve, Path.is_symlink
+    key = resolve(link)
+
+    def fake_resolve(path, strict=False):
+        return resolve(target, strict) if resolve(path) == key else resolve(path, strict)
+
+    with mock.patch.object(Path, 'resolve', fake_resolve), \
+            mock.patch.object(Path, 'is_symlink', lambda path: resolve(path) == key or is_symlink(path)):
+        yield
+
+
+def case_insensitive(directory: Path) -> bool:
+    probe = directory / 'Case-Probe'
+    probe.write_bytes(b'')
+    try:
+        return (directory / 'case-probe').exists()
+    finally:
+        probe.unlink()
 
 
 class InstallTests(unittest.TestCase):
@@ -775,6 +823,358 @@ class InstallTests(unittest.TestCase):
                 self.assertIn('--max-subagents', result.stderr)
                 self.assertFalse(self.home.exists())
                 self.assertFalse(self.skills.exists())
+
+    # Failures during the write phase, links and later releases ---------------------------------
+
+    def test_failed_write_records_what_was_written_and_the_new_packs(self):
+        self.install(packs='core,dev')
+        before = {Path(entry['path']).name: entry['sha256'] for entry in self.manifest(self.home)['files']}
+        (self.repo / 'skills/orchestrate/SKILL.md').write_text('Codex skill v2\n', encoding='utf-8')
+        for name in ('architect', 'reviewer'):
+            (self.repo / f'codex/agents/{name}.toml').write_text(codex_role(name) + '# v2\n', encoding='utf-8')
+        replace = os.replace
+
+        def locked(source, destination):
+            # Skill files are written before role files, and architect.toml before reviewer.toml.
+            if Path(destination).name == 'architect.toml':
+                raise PermissionError(13, 'The file is locked', str(destination))
+            return replace(source, destination)
+
+        with mock.patch.object(module.os, 'replace', locked):
+            with self.assertRaises(PermissionError):
+                self.install(packs='core')
+        self.assertEqual(list(self.root.rglob('*.tmp')), [])
+        manifest = self.manifest(self.home)
+        self.assertEqual(manifest['packs'], ['core'])
+        recorded = {Path(entry['path']).name: entry['sha256'] for entry in manifest['files']}
+        # Removed before the failure, so no longer recorded.
+        self.assertFalse((self.home / 'agents/database-engineer.toml').exists())
+        self.assertNotIn('database-engineer.toml', recorded)
+        # Written before the failure: recorded with the new data's hash.
+        skill = self.skills / 'orchestrate/SKILL.md'
+        self.assertEqual(skill.read_text(encoding='utf-8'), 'Codex skill v2\n')
+        self.assertEqual(recorded['SKILL.md'], sha256(skill.read_bytes()))
+        # The failed file and the one after it: still the previous data, under the previous entry.
+        for name in ('architect.toml', 'reviewer.toml'):
+            self.assertEqual(recorded[name], before[name])
+            self.assertEqual(sha256((self.home / 'agents' / name).read_bytes()), before[name])
+
+        rerun = self.install()  # no --packs: keeps the new selection and finishes the update
+        self.assertEqual((rerun['changed'], rerun['conflicts'], rerun['removed']), (2, [], []))
+        self.assertNotIn('legacy_files', rerun)
+        self.assertEqual(rerun['targets']['codex']['packs'], ['core'])
+        self.assertEqual(tree(self.home / 'agents'), ['architect.toml', 'reviewer.toml'])
+        self.assertEqual(self.install()['changed'], 0)
+
+    def test_write_atomic_removes_its_temporary_file_on_failure(self):
+        destination = self.root / 'out/file.txt'
+        with mock.patch.object(module.os, 'replace', side_effect=PermissionError(13, 'locked')):
+            with self.assertRaises(PermissionError):
+                module._write_atomic(destination, b'data')
+        self.assertEqual(list(destination.parent.iterdir()), [])
+
+    def test_linked_config_is_used_until_the_limit_must_change(self):
+        dotfiles = self.root / 'dotfiles/config.toml'
+        dotfiles.parent.mkdir()
+        original = b'[agents]\nmax_concurrent_threads_per_session = 7\n'
+        dotfiles.write_bytes(original)
+        self.home.mkdir()
+        link = self.home / 'config.toml'
+        with file_link(link, dotfiles):
+            result = self.install()
+            self.assertEqual(result['max_subagents'], 7)
+            self.assertEqual(result['conflicts'], [])
+            for options in ({'max_subagents': 9}, {'max_subagents': 9, 'force': True}):
+                with self.subTest(options):
+                    with self.assertRaisesRegex(ValueError, r'config\.toml is a file link.*real file.*'
+                                                            r'replace the link.*--max-subagents'):
+                        self.install(**options)
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(link.read_bytes(), original)
+        self.assertEqual(dotfiles.read_bytes(), original)
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX permission bits; Windows keeps only a read-only flag')
+    def test_config_rewrite_keeps_its_permission_bits(self):
+        path = self.write_config(b'model = "x"\n')
+        path.chmod(0o600)
+        self.install(force=True)
+        self.assertIn(b'max_concurrent_threads_per_session', path.read_bytes())
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_uninstall_keeps_a_created_directory_replaced_by_a_link(self):
+        self.install(target='claude')
+        workflows, mine = self.claude / 'workflows', self.root / 'my-workflows'
+        (workflows / 'team-review.js').unlink()
+        workflows.rmdir()
+        mine.mkdir()
+        (mine / 'mine.js').write_text('// mine\n', encoding='utf-8')
+        dir_link(workflows, mine)
+        try:
+            self.install(target='claude', uninstall=True)
+            self.assertTrue(workflows.exists(), 'the link the user made was removed')
+            self.assertEqual([path.name for path in self.claude.iterdir()], ['workflows'])
+            self.assertTrue((workflows / 'mine.js').is_file())
+        finally:
+            if os.name == 'nt' and workflows.exists():
+                workflows.rmdir()
+            elif workflows.is_symlink():
+                workflows.unlink()
+        self.assertEqual(tree(mine), ['mine.js'])
+
+    def test_empty_directory_cleanup_stops_at_links(self):
+        owned, target = self.root / 'owned', self.root / 'target'
+        owned.mkdir()
+        target.mkdir()
+        link = owned / 'linked'
+        dir_link(link, target)
+        try:
+            module._remove_empty_dirs([link / 'removed.md'], [owned])
+            self.assertTrue(link.exists(), 'the link was removed')
+            self.assertTrue(owned.is_dir())
+        finally:
+            if os.name == 'nt' and link.exists():
+                link.rmdir()
+            elif link.is_symlink():
+                link.unlink()
+        self.assertTrue(target.is_dir())
+
+    def test_packs_all_includes_packs_a_later_release_adds(self):
+        self.install(target='all', packs='all')
+        self.assertIs(self.manifest(self.home)['all_packs'], True)
+        self.assertIs(self.manifest(self.claude)['all_packs'], True)
+        release = self.repo / 'src/manifest.toml'
+        release.write_text(RELEASE.replace('[legacy]', '[packs.ops]\nplatforms = ["codex"]\n[legacy]'),
+                           encoding='utf-8')
+        (self.repo / 'src/roles/operator.toml').write_text('id = "operator"\npack = "ops"\n', encoding='utf-8')
+        (self.repo / 'codex/agents/operator.toml').write_text(codex_role('operator'), encoding='utf-8')
+        result = self.install(target='all')
+        self.assertEqual(result['targets']['codex']['packs'], ['core', 'dev', 'codex-only', 'ops'])
+        self.assertEqual(result['targets']['claude']['packs'], ['core', 'dev'])
+        self.assertIn('operator.toml', tree(self.home / 'agents'))
+        self.assertEqual(self.manifest(self.home)['packs'], ['core', 'dev', 'codex-only', 'ops'])
+        self.assertIs(self.manifest(self.home)['all_packs'], True)
+        # An explicit list replaces the intent; core is still always selected.
+        self.install(target='all', packs='core')
+        self.assertNotIn('all_packs', self.manifest(self.home))
+        self.assertEqual(self.install(target='all')['targets']['codex']['packs'], ['core'])
+
+    def test_packs_the_release_no_longer_has_are_reported(self):
+        self.install(packs='core,dev')
+        release = self.repo / 'src/manifest.toml'
+        release.write_text(RELEASE.replace('[packs.dev]\nplugin = "orchestra-dev"\nplatforms = ["claude", "codex"]\n',
+                                           ''), encoding='utf-8')
+        (self.repo / 'src/roles/database-engineer.toml').unlink()
+        result = self.install()
+        self.assertEqual(result['targets']['codex']['packs'], ['core'])
+        self.assertTrue(any('dev' in note and 'no longer has' in note for note in result.get('notes', [])),
+                        result.get('notes'))
+        self.assertFalse((self.home / 'agents/database-engineer.toml').exists())
+        self.assertEqual(self.manifest(self.home)['packs'], ['core'])
+
+    def test_role_file_differing_only_in_case_is_the_same_file(self):
+        agents = self.claude / 'agents'
+        agents.mkdir(parents=True)
+        if not case_insensitive(agents):
+            self.skipTest('this file system is case-sensitive, so Reviewer.md is another file')
+        (agents / 'Reviewer.md').write_text(claude_agent('reviewer') + 'Local edit.\n', encoding='utf-8')
+        with self.assertRaises(FileExistsError):
+            self.install(target='claude')
+        result = self.install(target='claude', force=True)
+        self.assertEqual(len(result['backups']), 1)
+        self.assertEqual(len(list(agents.iterdir())), 2)
+        self.assertEqual((agents / 'reviewer.md').read_bytes(),
+                         (self.repo / 'plugins/orchestra/agents/reviewer.md').read_bytes())
+        self.assertEqual(self.install(target='claude')['changed'], 0)
+
+    def test_manifest_of_another_target_is_refused_clearly(self):
+        self.install()
+        before = {str(path): path.read_bytes() for path in self.root.rglob('*') if path.is_file()}
+        with self.assertRaisesRegex(ValueError, 'belongs to the codex target, not claude'):
+            self.install(target='claude', claude_home=self.home)
+        self.assertEqual(before, {str(path): path.read_bytes() for path in self.root.rglob('*') if path.is_file()})
+
+    def test_unexpected_file_error_suggests_fixing_the_manifest(self):
+        self.install(target='claude')
+        moved = self.root / 'claude-moved'
+        self.claude.rename(moved)
+        with self.assertRaisesRegex(ValueError, r'unexpected file: .*home directory was moved.*remove it'):
+            self.install(target='claude', claude_home=moved)
+
+    def test_launcher_shim_is_accepted_only_in_its_bin_directory(self):
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        shim = self.root / 'elsewhere/codex-team.cmd'
+        shim.parent.mkdir()
+        shim.write_bytes(b'@echo off\r\n')
+        manifest['files'].append({'path': str(shim.resolve()), 'sha256': sha256(b'@echo off\r\n')})
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'unexpected file'):
+            self.install(uninstall=True)
+        self.assertTrue(shim.exists())
+        manifest['bin_dir'] = str(shim.parent.resolve())  # the directory the launcher was installed to
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        self.assertIn(str(shim.resolve()), self.install(uninstall=True)['removed'])
+        self.assertFalse(shim.exists())
+
+    @contextlib.contextmanager
+    def cli_tools(self):
+        """Launcher sources in the stand-in repository, and Node.js 22 and Codex CLI as if installed."""
+        for name in module.CLI_FILES:
+            source = self.repo / 'extras/codex-team' / name
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text('// launcher\n', encoding='utf-8')
+        with mock.patch.object(module.shutil, 'which', side_effect=lambda name: f'C:\\tools\\{name}.exe'), \
+                mock.patch.object(module.subprocess, 'check_output', return_value='v22.0.0\n'):
+            yield
+
+    @contextlib.contextmanager
+    def locked(self, path: Path):
+        """Removing `path` fails, as for a file another program holds open."""
+        unlink, locked = Path.unlink, path.resolve()
+
+        def guarded(item, *args, **kwargs):
+            if item.resolve() == locked:
+                raise PermissionError(13, 'The file is locked', str(item))
+            return unlink(item, *args, **kwargs)
+
+        with mock.patch.object(Path, 'unlink', guarded):
+            yield
+
+    def test_failed_skills_dir_move_keeps_the_previous_directory(self):
+        self.install()
+        source, old = self.repo / 'skills/orchestrate', self.skills / 'orchestrate'
+        new_skills = self.root / 'new-skills'
+        plain = dict(repo=self.repo, claude_home=self.claude)
+        # Old files are removed before new ones are written, in path order: SKILL.md goes first.
+        with self.locked(old / 'agents/openai.yaml'):
+            with self.assertRaises(PermissionError):
+                self.install(skills=new_skills)
+        self.assertFalse((old / 'SKILL.md').exists())
+        self.assertFalse(new_skills.exists())
+        self.assertEqual(self.manifest(self.home)['skills_dir'], str(self.skills.resolve()))
+
+        rerun = module.install(self.home, None, **plain)  # no --skills-dir: the move did not happen
+        self.assertEqual((rerun['changed'], rerun['conflicts'], rerun['removed']), (1, [], []))
+        self.assertEqual(tree(old), tree(source))
+
+        with self.locked(old / 'agents/openai.yaml'):
+            with self.assertRaises(PermissionError):
+                self.install(skills=new_skills)
+        removed = module.install(self.home, None, uninstall=True, **plain)['removed']
+        self.assertEqual(sorted(Path(path).name for path in removed),  # SKILL.md was already gone
+                         ['architect.toml', 'openai.yaml', 'reviewer.md', 'reviewer.toml'])
+        self.assertEqual((tree(self.skills), tree(self.home)), ([], ['config.toml']))
+        self.assertFalse(new_skills.exists())
+
+    @unittest.skipUnless(os.name == 'nt', '--with-cli installs a Windows launcher')
+    def test_failed_bin_dir_move_keeps_the_previous_directory(self):
+        old_bin, new_bin = self.root / 'bin', self.root / 'bin2'
+        with self.cli_tools():
+            self.install(with_cli=True, bin_dir=old_bin)
+            shim = old_bin / 'codex-team.cmd'
+            with self.locked(shim):
+                with self.assertRaises(PermissionError):
+                    self.install(bin_dir=new_bin)
+            self.assertTrue(shim.exists())
+            self.assertFalse(new_bin.exists())
+            self.assertEqual(self.manifest(self.home)['bin_dir'], str(old_bin.resolve()))
+            rerun = module.install(self.home, None, repo=self.repo, claude_home=self.claude)
+            self.assertEqual((rerun['changed'], rerun['conflicts'], rerun['removed']), (0, [], []))
+            self.assertEqual(rerun['targets']['codex']['launcher'], str(shim.resolve()))
+        self.assertIn(str(shim.resolve()), self.install(uninstall=True)['removed'])
+        self.assertFalse(shim.exists())
+
+    def test_shim_kept_without_a_recorded_bin_dir_is_accepted_from_the_roots(self):
+        # A manifest shaped like 2.2.1's after --no-with-cli kept a modified shim: the shim is listed,
+        # its directory is among the roots, and there is no bin_dir.
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        shim = self.root / 'custom-bin/codex-team.cmd'
+        shim.parent.mkdir()
+        shim.write_bytes(b'@echo off\r\nrem local edit\r\n')
+        manifest['files'].append({'path': str(shim.resolve()), 'sha256': sha256(b'@echo off\r\n')})
+        manifest['roots'].append(str(shim.parent.resolve()))
+        self.assertNotIn('bin_dir', manifest)
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+
+        result = self.install()
+        self.assertEqual(result['kept_modified'], [str(shim.resolve())])
+        self.assertEqual(self.manifest(self.home)['bin_dir'], str(shim.parent.resolve()))
+        self.assertEqual(self.install(uninstall=True)['kept_modified'], [str(shim.resolve())])
+        self.assertIn(str(shim.resolve()), self.install(uninstall=True, force=True)['removed'])
+        self.assertFalse(shim.exists())
+
+    def test_shim_outside_the_recorded_bin_dir_names_the_option_that_accepts_it(self):
+        # A manifest shaped like 2.2.1's after a --bin-dir change left a modified shim in the old
+        # directory: bin_dir names the new directory only.
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        old_bin, new_bin = self.root / 'old-bin', self.root / 'new-bin'
+        shim = old_bin / 'codex-team.cmd'
+        old_bin.mkdir()
+        new_bin.mkdir()
+        shim.write_bytes(b'@echo off\r\nrem local edit\r\n')
+        manifest['files'].append({'path': str(shim.resolve()), 'sha256': sha256(b'@echo off\r\n')})
+        manifest.update(bin_dir=str(new_bin.resolve()), roots=manifest['roots'] + [str(old_bin.resolve())])
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, re.escape(f'--bin-dir "{old_bin.resolve()}"')):
+            self.install(uninstall=True)
+        self.assertIn(str(shim.resolve()), self.install(uninstall=True, force=True, bin_dir=old_bin)['removed'])
+        self.assertFalse(shim.exists())
+
+    def test_two_kept_shims_both_stay_on_record(self):
+        # 2.2.1 after a --bin-dir move: a modified shim in the old and in the new bin directory.
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        bins = [self.root / 'bin-x', self.root / 'bin-y']
+        for directory in bins:
+            directory.mkdir()
+            (directory / 'codex-team.cmd').write_bytes(b'@echo off\r\nrem local edit\r\n')
+            manifest['files'].append({'path': str((directory / 'codex-team.cmd').resolve()),
+                                      'sha256': sha256(b'@echo off\r\n')})
+        manifest.update(bin_dir=str(bins[1].resolve()), roots=manifest['roots'] + [str(b.resolve()) for b in bins])
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        kept = self.install(uninstall=True, bin_dir=bins[0])['kept_modified']
+        self.assertEqual(len([p for p in kept if p.endswith('codex-team.cmd')]), 2)
+        recorded = [entry['path'] for entry in self.manifest(self.home)['files']]
+        self.assertEqual(sorted(p for p in recorded if p.endswith('codex-team.cmd')),
+                         sorted(str((b / 'codex-team.cmd').resolve()) for b in bins))
+        # Both shims are still known: naming the directory the manifest does not record lets one
+        # forced uninstall accept and remove both (recorded bin_dir plus --bin-dir).
+        other = next(b for b in bins if str(b.resolve()) != self.manifest(self.home)['bin_dir'])
+        removed = self.install(uninstall=True, force=True, bin_dir=other)['removed']
+        self.assertEqual(len([p for p in removed if p.endswith('codex-team.cmd')]), 2)
+
+    def test_skill_outside_the_recorded_skills_dir_names_the_option_that_accepts_it(self):
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        manifest['skills_dir'] = str((self.root / 'other-skills').resolve())
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, re.escape(f'--skills-dir "{self.skills.resolve()}"')):
+            module.install(self.home, None, repo=self.repo, claude_home=self.claude, uninstall=True)
+        module.install(self.home, self.skills, repo=self.repo, claude_home=self.claude, uninstall=True)
+        self.assertEqual(tree(self.skills), [])
+
+    @unittest.skipUnless(os.name == 'nt', '--with-cli installs a Windows launcher')
+    def test_modified_launcher_shim_keeps_its_bin_directory(self):
+        old_bin, new_bin = self.root / 'bin', self.root / 'bin2'
+        with self.cli_tools():
+            self.install(with_cli=True, bin_dir=old_bin)
+            shim = old_bin / 'codex-team.cmd'
+            shim.write_bytes(shim.read_bytes() + b'rem local edit\r\n')
+            with self.assertRaisesRegex(ValueError, 'Cannot change --bin-dir.*modified'):
+                self.install(bin_dir=new_bin)
+            self.assertFalse(new_bin.exists())
+        result = self.install(with_cli=False)
+        self.assertEqual(result['kept_modified'], [str(shim.resolve())])
+        self.assertEqual(self.manifest(self.home)['bin_dir'], str(old_bin.resolve()))
+        self.assertIn(str(shim.resolve()), self.install(uninstall=True, force=True)['removed'])
+        self.assertFalse(shim.exists())
 
 
 class RealRepositoryTests(unittest.TestCase):

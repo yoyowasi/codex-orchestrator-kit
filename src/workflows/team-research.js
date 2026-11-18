@@ -159,6 +159,7 @@ const results = await pipeline(
 )
 
 const failedSubs = subs.map((s, i) => (results[i] ? null : `${i + 1}. ${s.question}`)).filter(Boolean)
+const failedSubQuestions = subs.map((s, i) => ({ id: i + 1, question: s.question })).filter((s, i) => !results[i])
 if (failedSubs.length) log(`Sub-question(s) with no result, NOT covered: ${failedSubs.join(' | ')}`)
 const done = results.filter(Boolean)
 const all = done.flatMap(r => r.claims.filter(Boolean))
@@ -184,4 +185,5 @@ const answer = await roleAgent('researcher', [
   .catch(e => { log(`Synthesis agent failed: ${(e && e.message) || e}`); return null })
 if (!answer) log('Synthesis failed; returning verified claims without an answer.')
 
-return { answer: answer || '', claims, dropped }
+const subQuestions = subs.map((s, i) => ({ id: i + 1, question: s.question, evidence: s.evidence, covered: Boolean(results[i]) }))
+return { answer: answer || '', claims, dropped, subQuestions, failedSubQuestions, gaps, assumptions: plan.assumptions || '' }
