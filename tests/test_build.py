@@ -540,6 +540,10 @@ class SourceContractTests(BuildTestCase):
         for name, (overrides, pattern) in cases.items():
             with self.subTest(name):
                 self.assertRejects(overrides, pattern)
+        for name_line in ('name: "orchestrate"', "name: 'orchestrate'", "name: orchestrate   # skill name"):
+            with self.subTest(name_line):  # valid YAML spellings of the same name
+                outputs = self.render({"skill/SKILL.md": SKILL.replace("name: orchestrate", name_line)})
+                self.assertIn("skills/orchestrate/SKILL.md", outputs)
         for length in (25, 64):  # the boundaries are allowed
             with self.subTest(length=length):
                 outputs = self.render({"manifest.toml": MANIFEST.replace("Coordinates test specialists.", "x" * length)})
@@ -574,6 +578,9 @@ class SourceContractTests(BuildTestCase):
         # Headings inside fenced code blocks are examples, not structure.
         fenced = valid.replace("- x\n", "```md\n# Title\n### Deep\n```\n~~~\n## Fake\n~~~\n", 1)
         self.assertIn("plugins/orchestra-extra/agents/doc-looker.md", self.render(role(fenced)))
+        # A line that starts with ```x``` is inline code, not a fence that hides later headings.
+        inline = valid.replace("- x\n", "```x``` is inline code.\n", 1)
+        self.assertIn("plugins/orchestra-extra/agents/doc-looker.md", self.render(role(inline)))
 
     def test_workflow_files_are_named_team_name(self):
         for name in ("review", "my_review", "Team-review", "team-"):
@@ -587,7 +594,9 @@ class SourceContractTests(BuildTestCase):
             "token split across lines": ("skill/references/extra.md", "ok\n{{role:\ncode-checker}}\n", "extra.md:2:"),
             "unclosed after a valid token": ("skill/references/extra.md", "{{version}} and {{repository\n",
                                              "extra.md:1:"),
-            "stray close after a valid token": ("skill/references/extra.md", "{{version}} }}\n", "extra.md:1:"),
+            "stray close after a valid token": ("skill/references/extra.md", "{{version}} role:code-checker}}\n",
+                                                "extra.md:1:"),
+            "token typo with one brace": ("skill/references/extra.md", "Ask {role:code-checker}}.\n", "extra.md:1:"),
             "in the other platform's block": ("skill/references/extra.md",
                                               "<!-- @codex -->\nUse {{version\n<!-- @end -->\n", "extra.md:2:"),
             "in common rules": ("roles/_common.md", COMMON + "- {{role:code-checker\n", "_common.md:11:"),
@@ -595,6 +604,9 @@ class SourceContractTests(BuildTestCase):
         for name, (path, text, where) in cases.items():
             with self.subTest(name):
                 self.assertRejects({path: text}, re.escape(where))
+        # Closing braces in code examples are ordinary text.
+        code = '```json\n{"task": {"id": 1}}\n```\n\n```js\nif (a) { if (b) { run(); }}\n```\n'
+        self.assertIn("skills/orchestrate/references/extra.md", self.render({"skill/references/extra.md": code}))
         source = role_toml("doc-looker", "extra", "Reads.", "- Read.\n- Ask {{role:code-checker.\n")
         line = source.splitlines().index("- Ask {{role:code-checker.") + 1
         self.assertRejects({"roles/doc-looker.toml": source}, rf"doc-looker\.toml:{line}:")

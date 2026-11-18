@@ -251,9 +251,26 @@ test('team_wait with a non-numeric seconds falls back to 30 and still times out'
     assert.equal(r.timedOut,true);
     assert.equal(clock.t,30000);
   }
-  clock.t=0;
-  await ctl.wait({seconds:500});
-  assert.equal(clock.t,45000);
+  for(const big of [500,Infinity]){
+    clock.t=0;clock.sleeps=0;
+    await ctl.wait({seconds:big});
+    assert.equal(clock.t,45000);
+  }
+});
+
+test('team_wait ends when a worker that was waiting answers and then waits again',async t=>{
+  const {manifest,opts}=waitFixture(t,['a','b']);
+  let reads=0;
+  const rpc={call:async(m,p)=>{
+    if(p.threadId==='b')return thread('active');
+    reads++;
+    // waiting -> answered and running -> waiting again
+    return reads===2?thread('active'):thread('active','inProgress',['waitingOnApproval']);
+  }};
+  const r=await new TeamControl(manifest,rpc,opts).wait({});
+  assert.equal(reads,3);
+  assert.deepEqual(r.waiting,['a']);
+  assert.equal(r.timedOut,false);
 });
 
 test('team_wait ignores a worker that was already waiting and reports it',async t=>{
@@ -334,6 +351,15 @@ async function mcpRun(control,lines){
 test('the MCP loop answers malformed input with JSON-RPC errors',async()=>{
   const replies=await mcpRun({models:()=>[]},['{not json','[{"jsonrpc":"2.0","id":1,"method":"ping"}]','{"jsonrpc":"2.0","id":7}','{"jsonrpc":"2.0","id":2,"method":"ping"}']);
   assert.deepEqual(replies.map(r=>[r.id,r.error?.code??null]),[[null,-32700],[null,-32600],[7,-32600],[2,null]]);
+});
+
+test('null tool arguments reach the tool as an empty object',async()=>{
+  let received;
+  const control={models:()=>[],dispatch:async args=>{received=args;throw new Error('A concrete task is required.');}};
+  const [reply]=await mcpRun(control,[JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'team_dispatch',arguments:null}})]);
+  assert.deepEqual(received,{});
+  assert.equal(reply.result.isError,true);
+  assert.equal(reply.result.content[0].text,'A concrete task is required.');
 });
 
 test('a long team_wait does not block ping, and dispatches never interleave',async()=>{

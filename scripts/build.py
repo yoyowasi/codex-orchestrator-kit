@@ -80,6 +80,9 @@ YAML_RESERVED = frozenset({"true", "false", "yes", "no", "on", "off", "null", "y
 ROLE_HEADINGS = ("Before you start", "Method", "Deliverable", "Quality checks", "Handoffs and boundaries")
 HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*")
 FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
+# A `}}` that ends something shaped like a template token: a typo such as {role:reviewer}}.
+# Other `}}` (closing braces in JSON or code examples) are ordinary text.
+STRAY_CLOSE = re.compile(r"(?:role:[\w-]*|role-catalog|version|repository|marketplace)\s*\}\}")
 SHORT_DESCRIPTION_RANGE = (25, 64)
 # Characters a TOML multi-line literal string cannot contain (tab and LF are allowed).
 LITERAL_UNSAFE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -417,8 +420,9 @@ def _check_stray_braces(line: str, number: int, label: str) -> None:
     rest = TOKEN.sub("", line)
     if "{{" in rest:
         raise BuildError(f"{label}:{number}: unclosed {{{{ (a token must open and close on one line)")
-    if "}}" in rest:
-        raise BuildError(f"{label}:{number}: stray }}}} without a matching {{{{")
+    stray = STRAY_CLOSE.search(rest)
+    if stray:
+        raise BuildError(f"{label}:{number}: {stray.group(0)!r} looks like a template token without its opening {{{{")
 
 
 def check_role_structure(text: str, label: str) -> None:
@@ -433,7 +437,8 @@ def check_role_structure(text: str, label: str) -> None:
                     and not line.strip().strip(fence[0])):
                 fence = None
             continue
-        if opened:
+        # CommonMark: a backtick fence's info string has no backticks, so ```x``` is inline code.
+        if opened and not (opened.group(1)[0] == "`" and "`" in line[opened.end():]):
             fence = opened.group(1)
             continue
         heading = HEADING.fullmatch(line)
@@ -604,7 +609,9 @@ def _check_required_skill_file(source: Source, rel: str, rendered: str, platform
         end = lines.index("---", 1) if lines[0] == "---" and "---" in lines[1:] else None
         if end is None:
             raise BuildError(f"{where}: must start with --- frontmatter that is closed by ---")
-        if f"name: {source.skill['name']}" not in lines[1:end]:
+        names = [value.split(" #")[0].strip().strip("'\"") for key, colon, value
+                 in (line.partition(":") for line in lines[1:end]) if colon and key.strip() == "name"]
+        if names != [source.skill["name"]]:
             raise BuildError(f"{where}: frontmatter must contain `name: {source.skill['name']}` "
                              "(the manifest [skill] name)")
     elif role_catalog(source, platform) not in rendered:

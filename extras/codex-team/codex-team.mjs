@@ -398,7 +398,8 @@ export class TeamControl {
   async wait({roles,seconds}={}){
     roles=roles?.length?roles:Object.keys(this.team().members);
     const n=typeof seconds==='string'&&seconds.trim()?Number(seconds):seconds;
-    const secs=Number.isFinite(n)?n:30;
+    // Anything that is not a number falls back to 30; Infinity clamps to the cap like any large value.
+    const secs=typeof n==='number'&&!Number.isNaN(n)?n:30;
     const start=this.now();
     const until=start+Math.min(WAIT_MAX_SECONDS,Math.max(1,secs))*1000;
     const hard=start+WAIT_HARD_MS;
@@ -409,7 +410,9 @@ export class TeamControl {
       const waitingRoles=states.filter(isWaiting).map(s=>s.role);
       // A worker that was already waiting when the call began does not end the wait; only one
       // that starts waiting during this call does.
-      baseline??=new Set(waitingRoles);
+      if(!baseline)baseline=new Set(waitingRoles);
+      // A worker that answers its prompt leaves the baseline, so its next prompt ends the wait.
+      else for(const r of [...baseline])if(!waitingRoles.includes(r))baseline.delete(r);
       const newlyWaiting=waitingRoles.filter(r=>!baseline.has(r));
       // A worker already waiting for the user cannot finish on its own, so it does not hold the wait open.
       const active=states.filter(s=>isRunning(s)&&!baseline.has(s.role));
@@ -458,7 +461,7 @@ export async function serveMcp(control,input,output){
       else if(request.method==='ping')result={};
       else if(request.method==='tools/list')result={tools:teamTools(control.models())};
       else if(request.method==='tools/call'){
-        const {name,arguments:args={}}=request.params||{};
+        const name=request.params?.name, args=request.params?.arguments??{};
         try{result={content:[{type:'text',text:JSON.stringify(await callTool(name,args))}]};}
         catch(error){result={isError:true,content:[{type:'text',text:error.message}]};}
       }else return fail(request.id,-32601,'Method not found');

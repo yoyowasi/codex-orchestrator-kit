@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import sys
@@ -1016,15 +1017,129 @@ class InstallTests(unittest.TestCase):
         self.assertIn(str(shim.resolve()), self.install(uninstall=True)['removed'])
         self.assertFalse(shim.exists())
 
-    @unittest.skipUnless(os.name == 'nt', '--with-cli installs a Windows launcher')
-    def test_modified_launcher_shim_keeps_its_bin_directory(self):
+    @contextlib.contextmanager
+    def cli_tools(self):
+        """Launcher sources in the stand-in repository, and Node.js 22 and Codex CLI as if installed."""
         for name in module.CLI_FILES:
             source = self.repo / 'extras/codex-team' / name
             source.parent.mkdir(parents=True, exist_ok=True)
             source.write_text('// launcher\n', encoding='utf-8')
-        old_bin, new_bin = self.root / 'bin', self.root / 'bin2'
         with mock.patch.object(module.shutil, 'which', side_effect=lambda name: f'C:\\tools\\{name}.exe'), \
                 mock.patch.object(module.subprocess, 'check_output', return_value='v22.0.0\n'):
+            yield
+
+    @contextlib.contextmanager
+    def locked(self, path: Path):
+        """Removing `path` fails, as for a file another program holds open."""
+        unlink, locked = Path.unlink, path.resolve()
+
+        def guarded(item, *args, **kwargs):
+            if item.resolve() == locked:
+                raise PermissionError(13, 'The file is locked', str(item))
+            return unlink(item, *args, **kwargs)
+
+        with mock.patch.object(Path, 'unlink', guarded):
+            yield
+
+    def test_failed_skills_dir_move_keeps_the_previous_directory(self):
+        self.install()
+        source, old = self.repo / 'skills/orchestrate', self.skills / 'orchestrate'
+        new_skills = self.root / 'new-skills'
+        plain = dict(repo=self.repo, claude_home=self.claude)
+        # Old files are removed before new ones are written, in path order: SKILL.md goes first.
+        with self.locked(old / 'agents/openai.yaml'):
+            with self.assertRaises(PermissionError):
+                self.install(skills=new_skills)
+        self.assertFalse((old / 'SKILL.md').exists())
+        self.assertFalse(new_skills.exists())
+        self.assertEqual(self.manifest(self.home)['skills_dir'], str(self.skills.resolve()))
+
+        rerun = module.install(self.home, None, **plain)  # no --skills-dir: the move did not happen
+        self.assertEqual((rerun['changed'], rerun['conflicts'], rerun['removed']), (1, [], []))
+        self.assertEqual(tree(old), tree(source))
+
+        with self.locked(old / 'agents/openai.yaml'):
+            with self.assertRaises(PermissionError):
+                self.install(skills=new_skills)
+        removed = module.install(self.home, None, uninstall=True, **plain)['removed']
+        self.assertEqual(sorted(Path(path).name for path in removed),  # SKILL.md was already gone
+                         ['architect.toml', 'openai.yaml', 'reviewer.md', 'reviewer.toml'])
+        self.assertEqual((tree(self.skills), tree(self.home)), ([], ['config.toml']))
+        self.assertFalse(new_skills.exists())
+
+    @unittest.skipUnless(os.name == 'nt', '--with-cli installs a Windows launcher')
+    def test_failed_bin_dir_move_keeps_the_previous_directory(self):
+        old_bin, new_bin = self.root / 'bin', self.root / 'bin2'
+        with self.cli_tools():
+            self.install(with_cli=True, bin_dir=old_bin)
+            shim = old_bin / 'codex-team.cmd'
+            with self.locked(shim):
+                with self.assertRaises(PermissionError):
+                    self.install(bin_dir=new_bin)
+            self.assertTrue(shim.exists())
+            self.assertFalse(new_bin.exists())
+            self.assertEqual(self.manifest(self.home)['bin_dir'], str(old_bin.resolve()))
+            rerun = module.install(self.home, None, repo=self.repo, claude_home=self.claude)
+            self.assertEqual((rerun['changed'], rerun['conflicts'], rerun['removed']), (0, [], []))
+            self.assertEqual(rerun['targets']['codex']['launcher'], str(shim.resolve()))
+        self.assertIn(str(shim.resolve()), self.install(uninstall=True)['removed'])
+        self.assertFalse(shim.exists())
+
+    def test_shim_kept_without_a_recorded_bin_dir_is_accepted_from_the_roots(self):
+        # A manifest shaped like 2.2.1's after --no-with-cli kept a modified shim: the shim is listed,
+        # its directory is among the roots, and there is no bin_dir.
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        shim = self.root / 'custom-bin/codex-team.cmd'
+        shim.parent.mkdir()
+        shim.write_bytes(b'@echo off\r\nrem local edit\r\n')
+        manifest['files'].append({'path': str(shim.resolve()), 'sha256': sha256(b'@echo off\r\n')})
+        manifest['roots'].append(str(shim.parent.resolve()))
+        self.assertNotIn('bin_dir', manifest)
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+
+        result = self.install()
+        self.assertEqual(result['kept_modified'], [str(shim.resolve())])
+        self.assertEqual(self.manifest(self.home)['bin_dir'], str(shim.parent.resolve()))
+        self.assertEqual(self.install(uninstall=True)['kept_modified'], [str(shim.resolve())])
+        self.assertIn(str(shim.resolve()), self.install(uninstall=True, force=True)['removed'])
+        self.assertFalse(shim.exists())
+
+    def test_shim_outside_the_recorded_bin_dir_names_the_option_that_accepts_it(self):
+        # A manifest shaped like 2.2.1's after a --bin-dir change left a modified shim in the old
+        # directory: bin_dir names the new directory only.
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        old_bin, new_bin = self.root / 'old-bin', self.root / 'new-bin'
+        shim = old_bin / 'codex-team.cmd'
+        old_bin.mkdir()
+        new_bin.mkdir()
+        shim.write_bytes(b'@echo off\r\nrem local edit\r\n')
+        manifest['files'].append({'path': str(shim.resolve()), 'sha256': sha256(b'@echo off\r\n')})
+        manifest.update(bin_dir=str(new_bin.resolve()), roots=manifest['roots'] + [str(old_bin.resolve())])
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, re.escape(f'--bin-dir "{old_bin.resolve()}"')):
+            self.install(uninstall=True)
+        self.assertIn(str(shim.resolve()), self.install(uninstall=True, force=True, bin_dir=old_bin)['removed'])
+        self.assertFalse(shim.exists())
+
+    def test_skill_outside_the_recorded_skills_dir_names_the_option_that_accepts_it(self):
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        manifest['skills_dir'] = str((self.root / 'other-skills').resolve())
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, re.escape(f'--skills-dir "{self.skills.resolve()}"')):
+            module.install(self.home, None, repo=self.repo, claude_home=self.claude, uninstall=True)
+        module.install(self.home, self.skills, repo=self.repo, claude_home=self.claude, uninstall=True)
+        self.assertEqual(tree(self.skills), [])
+
+    @unittest.skipUnless(os.name == 'nt', '--with-cli installs a Windows launcher')
+    def test_modified_launcher_shim_keeps_its_bin_directory(self):
+        old_bin, new_bin = self.root / 'bin', self.root / 'bin2'
+        with self.cli_tools():
             self.install(with_cli=True, bin_dir=old_bin)
             shim = old_bin / 'codex-team.cmd'
             shim.write_bytes(shim.read_bytes() + b'rem local edit\r\n')

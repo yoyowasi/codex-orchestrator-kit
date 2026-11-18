@@ -494,7 +494,19 @@ def _recorded_path(value, label) -> Path:
     return path
 
 
-def _manifest_files(manifest, allowed, label):
+def _relocation_hint(path: Path, target: str) -> str:
+    """The option that makes a file from another Codex install location acceptable again."""
+    if target != 'codex':
+        return ''
+    if path.name == 'codex-team.cmd':
+        return f'If the launcher was installed to another directory, rerun with --bin-dir "{path.parent}". '
+    skill = next((parent for parent in path.parents if parent.name == SKILL), None)
+    if skill is not None:
+        return f'If the skill was installed to another directory, rerun with --skills-dir "{skill.parent}". '
+    return ''
+
+
+def _manifest_files(manifest, allowed, label, target):
     """Yield (entry, path) for files a previous install recorded. The manifest's own roots are not
     trusted: every path must have one of the shapes this installer writes (`allowed(path)`)."""
     if not manifest:
@@ -505,9 +517,9 @@ def _manifest_files(manifest, allowed, label):
             raise ValueError(f'Install manifest has an invalid file entry: {entry!r}. Fix or remove the manifest.')
         path = _recorded_path(entry.get('path'), 'file path')
         if not allowed(path):
-            raise ValueError(f'Install manifest lists an unexpected file: {path}. If the home directory was moved, '
-                             f'the manifest still names the old location: fix the paths in {label} or remove it, '
-                             'then rerun.')
+            raise ValueError(f'Install manifest lists an unexpected file: {path}. {_relocation_hint(path, target)}'
+                             'If the home directory was moved, the manifest still names the old location: '
+                             f'fix the paths in {label} or remove it, then rerun.')
         yield entry, path
 
 
@@ -639,6 +651,15 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
         for directory in (recorded_bin, current_bin):
             if directory:
                 shim_dirs |= {Path(directory), Path(directory).expanduser().resolve()}
+        if not recorded_bin and isinstance(before.get('roots'), list):
+            # Earlier releases recorded bin_dir only while the launcher was installed, so a manifest
+            # without it names the directory of a shim it kept (modified) only among its roots.
+            for root in before['roots']:
+                try:
+                    directory = _recorded_path(root, 'root')
+                except ValueError:
+                    continue  # accepts less, never more; the files themselves are checked as usual
+                shim_dirs |= {directory, directory.resolve()}
         skill_dirs['codex'] = skills_dir / SKILL
         skill_roots = [skills_dir / SKILL] + ([recorded_skills / SKILL] if recorded_skills else [])
         owned_dirs += [codex_home / 'tools' / 'codex-team', codex_home / INSTALL_MANIFEST.parent, *skill_roots]
@@ -658,7 +679,7 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
                              or (path.parent == claude_home / 'workflows' and path.suffix == '.js')
                              or path.is_relative_to(skill_dirs['claude']))
 
-    recorded = {t: list(_manifest_files(previous[t], allowed(t), manifests[t])) for t in targets}
+    recorded = {t: list(_manifest_files(previous[t], allowed(t), manifests[t], t)) for t in targets}
     created = {}
     for t in targets:
         made = (previous[t] or {}).get('created_dirs') or []
@@ -860,18 +881,31 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
         entries += kept_entries
         if not entries and (uninstall or not pending):
             return False
+        # While entries remain in the previous skills or bin directory (a failed run did not get to
+        # remove them; the guards above refuse a move that leaves modified files there), the move did
+        # not happen: keep naming the previous directory, so that the next run accepts those entries,
+        # and leave files that already were in the new one untracked, as they were before this run.
+        location = skills_dir if t == 'codex' else None
+        if t == 'codex' and recorded_skills and skills_dir != recorded_skills and any(
+                Path(entry['path']).is_relative_to(recorded_skills / SKILL) for entry in kept_entries):
+            location = recorded_skills
+            entries = [entry for entry in entries if Path(entry['path']).is_relative_to(recorded_skills / SKILL)
+                       or not Path(entry['path']).is_relative_to(skills_dir / SKILL)]
+        launcher = report['targets'][t].get('launcher')
+        kept_shims = [Path(entry['path']).parent for entry in kept_entries
+                      if Path(entry['path']).name == 'codex-team.cmd']
+        if kept_shims:  # a shim that stays where it is (modified, or not yet removed): the same rule
+            launcher_dir = str(kept_shims[0])
+            entries = [entry for entry in entries if Path(entry['path']).name != 'codex-team.cmd'
+                       or Path(entry['path']).parent == kept_shims[0]]
+        elif launcher:
+            launcher_dir = str(Path(launcher).parent)
+        else:  # an uninstall still remembers where the shim was
+            launcher_dir = str(bin_dir) if uninstall and t == 'codex' and bin_dir else None
         manifest_roots = set(roots[t])
         if kept_entries and previous[t]:
             manifest_roots.update(_recorded_path(root, 'root') for root in previous[t].get('roots', []))
-        launcher = report['targets'][t].get('launcher')
-        shims = [Path(entry['path']).parent for entry in entries if Path(entry['path']).name == 'codex-team.cmd']
-        if launcher:
-            launcher_dir = str(Path(launcher).parent)
-        elif shims:  # a modified shim this run keeps: the next run must still accept its directory
-            launcher_dir = str(shims[0])
-        else:  # an uninstall still remembers where the shim was
-            launcher_dir = str(bin_dir) if uninstall and t == 'codex' and bin_dir else None
-        extra = {'skills_dir': str(skills_dir) if t == 'codex' else None, 'bin_dir': launcher_dir,
+        extra = {'skills_dir': str(location) if location else None, 'bin_dir': launcher_dir,
                  'created_dirs': sorted(str(directory) for directory in created[t] if directory.is_dir()),
                  'all_packs': all_packs[t]}
         data = _manifest_bytes(release, t, selected[t], with_cli and t == 'codex', manifest_roots, entries, extra)
