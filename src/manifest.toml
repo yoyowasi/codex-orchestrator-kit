@@ -23,7 +23,7 @@ platforms = ["claude", "codex"]
 color = "blue"
 
 [packs.dev]
-description = "Databases, DevOps, performance, automation, UX and accessibility."
+description = "Databases, data pipelines, ML, mobile, legacy modernization, DevOps, performance, automation, UX, UI and accessibility."
 plugin = "orchestra-dev"
 platforms = ["claude", "codex"]
 color = "green"
@@ -35,13 +35,13 @@ platforms = ["claude", "codex"]
 color = "yellow"
 
 [packs.business]
-description = "Business analysis, finance, product, user insights and operations."
+description = "Business analysis, finance, product, project management, compliance, user insights and operations."
 plugin = "orchestra-business"
 platforms = ["claude", "codex"]
 color = "orange"
 
 [packs.content]
-description = "Content strategy, creative writing, localization and learning design."
+description = "Content strategy, creative writing, copy editing, UX writing, localization and learning design."
 plugin = "orchestra-content"
 platforms = ["claude", "codex"]
 color = "purple"

@@ -38,10 +38,33 @@ description = "..."             # required. one English sentence, at most 200 ch
 access = "read-only"            # optional. "write" (default) | "read-shell" | "read-only"
 platforms = ["claude", "codex"] # optional. defaults to the pack's platforms
 instructions = '''
-Role-specific instructions in English, one rule per line or short bullet list.
+Role-specific instructions in English, under the five headings below.
 Do not repeat anything that _common.md already says.
 '''
 ```
+
+### Role instruction structure
+
+Every role's `instructions` use these `##` headings, in this order, so every brief reads the same way. `src/roles/reviewer.toml` is the reference example.
+
+| Heading | Content |
+|---|---|
+| `## Before you start` | 2-4 bullets: what to confirm from the assignment and the material; which gaps block the work and which the role proceeds on as a stated assumption. |
+| `## Method` | 3-7 numbered steps in the order a practitioner works, naming concrete techniques of the profession, not virtues. |
+| `## Deliverable` | The output's named fields, columns or sections; the scale it uses (see below) with a one-line definition of each level; what "done" means. |
+| `## Quality checks` | 3-6 verifiable checks on the role's own output, including at most two `Avoid: ...` bullets for the profession's typical failure modes. |
+| `## Handoffs and boundaries` | Peers and what is exchanged; role-specific gated actions and the extra fields their approval request needs; the no-edit rule for read-only and read-shell roles; boundaries to other roles. |
+
+Keep each role to about 18-32 lines, one rule per bullet. Only `##` headings: the generated brief adds a `#` title and the common rules add `## Working rules`.
+
+Shared scales, so outputs read the same across roles:
+
+- Review findings (code, documents, accessibility, evidence): `blocker | major | minor`, with confidence `confirmed | likely | possible`.
+- Security findings: `critical | high | medium | low` by reachability and impact, with the same confidence scale.
+- Priorities in product, business and operations work: `must | should | could | won't (this time)`.
+- Claims checked against sources: `supported | partly supported | unsupported | unverifiable`.
+
+Ownership and boundaries between roles are part of the contract: when one role's text hands work to another, the other role's text must accept it.
 
 `access` is the only permission knob. Generators map it as follows.
 

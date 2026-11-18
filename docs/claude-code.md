@@ -175,7 +175,7 @@ Every role has one access level. These are the generated agent settings and what
 | access | Roles | Agent setting | Enforcement |
 |---|---|---|---|
 | `write` | all others | `disallowedTools: Agent` | none beyond the ownership written into the assignment |
-| `read-shell` | reviewer, security-reviewer | `disallowedTools: Write, Edit, NotebookEdit, Agent` | partial: Bash, PowerShell and MCP tools remain, so the agent can still change files through the shell. "Do not modify files" is an instruction. |
+| `read-shell` | reviewer, security-reviewer, compliance-reviewer | `disallowedTools: Write, Edit, NotebookEdit, Agent` | partial: Bash, PowerShell and MCP tools remain, so the agent can still change files through the shell. "Do not modify files" is an instruction. |
 | `read-only` | architect, evidence-reviewer, accessibility-auditor, user-insights-analyst | `tools: Read, Grep, Glob, WebFetch, WebSearch, SendMessage` | real allowlist: no shell, no MCP tools, no Skill tool. Structured output for Workflow schemas still works. |
 
 A general-purpose agent that runs a role from a missing pack has the general-purpose tool set, so its access level is instruction-level. Subagents also run under your session's permission mode; plugin agents cannot set their own. For hard read-only enforcement beyond this, use permission deny rules or a PreToolUse hook in your own Claude Code settings.

@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Nine roles. `dev`: legacy-modernization-engineer, data-engineer, ml-engineer, mobile-developer and ui-designer (benchmarks shipped products, open-source design systems and design galleries, and removes the generic AI-made look). `business`: project-manager and compliance-reviewer (read-shell, no legal advice). `content`: copy-editor and ux-writer.
+- Neighboring roles hand the matching work to the new roles (for example product-manager hands schedules and risks to project-manager, database-engineer hands pipelines to data-engineer).
+
+### Changed
+
+- Every role's instructions follow one structure: Before you start, Method, Deliverable, Quality checks, Handoffs and boundaries. Each role now names the checks, ordered steps, output fields and scales of its profession instead of short general rules; ownership and boundaries between existing roles are unchanged, except the work they now hand to the new roles (see Added).
+- Roles share the same scales: `blocker | major | minor` for review findings, `critical | high | medium | low` for security findings, `must | should | could | won't` for priorities and `supported | partly supported | unsupported | unverifiable` for checked claims.
+- docs/architecture.md documents the role instruction structure; the role template in `references/roles.md` uses it.
+
 ## 2.1.2 - 2026-11-13
 
 Fixes from the test run of 2.1.1.

@@ -17,7 +17,7 @@
     {
       "name": "orchestra-dev",
       "source": "./plugins/orchestra-dev",
-      "description": "Databases, DevOps, performance, automation, UX and accessibility.",
+      "description": "Databases, data pipelines, ML, mobile, legacy modernization, DevOps, performance, automation, UX, UI and accessibility.",
       "version": "2.1.2"
     },
     {
@@ -29,13 +29,13 @@
     {
       "name": "orchestra-business",
       "source": "./plugins/orchestra-business",
-      "description": "Business analysis, finance, product, user insights and operations.",
+      "description": "Business analysis, finance, product, project management, compliance, user insights and operations.",
       "version": "2.1.2"
     },
     {
       "name": "orchestra-content",
       "source": "./plugins/orchestra-content",
-      "description": "Content strategy, creative writing, localization and learning design.",
+      "description": "Content strategy, creative writing, copy editing, UX writing, localization and learning design.",
       "version": "2.1.2"
     },
     {
