@@ -176,3 +176,54 @@ test('documented /orchestra:<name> commands exist', () => {
   }
   assert.deepEqual(unknown, []);
 });
+
+test('research returns sub-questions, failed sub-questions, gaps and assumptions', async () => {
+  const { body } = readMeta(fs.readFileSync(path.join(ROOT, 'src', 'workflows', 'team-research.js'), 'utf8'));
+  const run = new AsyncFunction('args', 'agent', 'parallel', 'pipeline', 'phase', 'log', body);
+  const claim = { claim: 'Feature X exists.', url: 'https://example.com/a', date: '2026-10-13', confidence: 'likely' };
+  const agent = async (prompt, options) => {
+    if (options.label === 'plan') {
+      return {
+        subQuestions: [{ question: 'Q one?', evidence: 'docs' }, { question: 'Q two?', evidence: 'blog' }],
+        assumptions: 'Current stable release only.',
+      };
+    }
+    if (options.label === 'research#1') return { claims: [claim], gaps: ['No benchmark found.'] };
+    if (options.label === 'research#2') throw new Error('stalled');
+    if (options.label.startsWith('verify#')) return { status: 'supported', note: 'ok' };
+    return 'mock answer';
+  };
+  // Like the runtime, a stage that throws drops its item to null.
+  const runtimePipeline = (items, ...stages) => Promise.all(items.map(async (item, i) => {
+    try {
+      let value = item;
+      for (const stage of stages) value = await stage(value, item, i);
+      return value;
+    } catch (e) { return null; }
+  }));
+  const result = await run('Question?', agent, parallel, runtimePipeline, () => {}, () => {});
+  assert.deepEqual(result.subQuestions.map(s => [s.id, s.question, s.covered]), [[1, 'Q one?', true], [2, 'Q two?', false]]);
+  assert.deepEqual(result.failedSubQuestions, [{ id: 2, question: 'Q two?' }]);
+  assert.deepEqual(result.gaps, ['No benchmark found.']);
+  assert.equal(result.assumptions, 'Current stable release only.');
+  assert.equal(result.claims.length, 1);
+});
+
+test('review verifies the tests lens with its own criterion and keeps the others', async () => {
+  const prompts = {};
+  const agent = async (prompt, opts) => {
+    if (opts.label === 'scope') return { intent: 'fix', files: [{ path: 'a.js', change: 'modified' }] };
+    if (opts.label.startsWith('review:')) return { findings: [{ file: 'a.js', line: 1, title: 't', scenario: 's', severity: 'major' }] };
+    prompts[opts.label] = prompt;
+    return { refuted: false, reason: 'ok' };
+  };
+  await reviewRunner()('the current diff', agent, parallel, pipeline, () => {}, () => {});
+  const tests = prompts['verify:tests#1'];
+  assert.match(tests, /refuted=false when the changed behavior is real, reachable, and no existing test exercises it/);
+  assert.match(tests, /refuted=true when an existing test already covers it or the behavior did not change/);
+  assert.doesNotMatch(tests, /trace the failure path/);
+  for (const lens of ['correctness', 'security']) {
+    assert.match(prompts[`verify:${lens}#1`], /Set refuted=false only when you can trace the failure path/);
+    assert.doesNotMatch(prompts[`verify:${lens}#1`], /no existing test exercises it/);
+  }
+});

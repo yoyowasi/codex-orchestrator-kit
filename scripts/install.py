@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tomllib
@@ -274,14 +275,17 @@ def _role_packs(repo: Path, release: dict, target: str) -> dict[str, str]:
     return roles
 
 
-def _select_packs(spec, release: dict, targets, previous: dict) -> dict[str, list[str]]:
-    """Resolve --packs for each target. Core is always included; None reuses the installed packs."""
+def _select_packs(spec, release: dict, targets, previous: dict):
+    """Resolve --packs for each target. Core is always included. Without --packs a rerun reuses the
+    previous install's choice (`previous` maps each target to its manifest): every pack again after
+    `all`, so packs a later release adds are included, otherwise the recorded list.
+    Returns ({target: packs}, {target: all packs chosen}, recorded packs this release no longer has)."""
     packs = release['packs']
 
     def built_for(name, target):
         return target in packs[name].get('platforms', [])
 
-    chosen = None
+    chosen, every = None, False
     if spec is not None:
         names = [name.strip() for name in (spec.split(',') if isinstance(spec, str) else spec) if name.strip()]
         unknown = sorted(set(names) - set(packs) - {'all'})
@@ -289,17 +293,25 @@ def _select_packs(spec, release: dict, targets, previous: dict) -> dict[str, lis
             raise ValueError(f'Unknown pack: {", ".join(unknown) or "(none)"}. '
                              f'Use a comma-separated list of {", ".join(packs)}, or all.')
         if 'all' in names:
-            chosen = set(packs)  # every pack, each target keeps the packs built for it
+            chosen, every = set(packs), True  # every pack, each target keeps the packs built for it
         else:
             chosen = set(names)
             for name in sorted(chosen):
                 if not any(built_for(name, target) for target in targets):
                     raise ValueError(f'Pack {name} is not built for {" or ".join(targets)}.')
-    selected = {}
+    selected, all_packs, missing = {}, {}, set()
     for target in targets:
-        wanted = chosen if chosen is not None else set(previous.get(target) or ())
+        before = previous.get(target) or {}
+        recorded = before.get('packs') if isinstance(before.get('packs'), list) else []
+        recorded = {name for name in recorded if isinstance(name, str)}
+        if chosen is not None:
+            wanted, all_packs[target] = chosen, every
+        else:
+            all_packs[target] = before.get('all_packs') is True
+            wanted = set(packs) if all_packs[target] else recorded
+            missing |= recorded - set(packs)
         selected[target] = [name for name in packs if (name in wanted or name == 'core') and built_for(name, target)]
-    return selected
+    return selected, all_packs, sorted(missing)
 
 
 def _toml_name(file: Path):
@@ -324,7 +336,11 @@ def _guard_role_names(directory: Path, pattern: str, ours: dict, read_name, skip
         if item in skip or not item.is_file():
             continue
         name = read_name(item)
-        if name in ours and item.name != ours[name]:
+        if name not in ours:
+            continue
+        # Compare files, not names: on a case-insensitive file system Reviewer.md is reviewer.md.
+        planned = directory / ours[name]
+        if not (planned.exists() and os.path.samefile(item, planned)):
             raise ValueError(f'Role {name} already exists in another file: {item}')
 
 
@@ -358,9 +374,15 @@ def _launcher_shim(codex_home: Path, python: str, node: str, encoding: str) -> b
 
 def _plan_codex(repo, release, packs, codex_home, skills_dir, with_cli, bin_dir, max_subagents, add):
     config_file = codex_home / 'config.toml'
-    config, limit = _config_with_limit(config_file.read_bytes() if config_file.exists() else b'',
-                                       max_subagents, config_file)
-    add('codex', codex_home, Path('config.toml'), config, owned=False)
+    current = config_file.read_bytes() if config_file.exists() else None
+    config, limit = _config_with_limit(current or b'', max_subagents, config_file)
+    if config != current:  # only a needed edit is planned, so a linked config that holds the limit works
+        if config_file.is_symlink():
+            raise ValueError(f'{config_file} is a file link (to {config_file.resolve()}), and the installer does '
+                             f'not write through links. Set agents.{LIMIT_KEY} = {limit} in the real file yourself, '
+                             'or replace the link with a regular file and rerun, with --max-subagents to choose '
+                             'the limit.')
+        add('codex', codex_home, Path('config.toml'), config, owned=False)
 
     source = _require(repo / 'skills' / SKILL / 'SKILL.md').parent
     for item in sorted(source.rglob('*')):
@@ -441,7 +463,7 @@ def _plan_claude(repo, release, packs, claude_home, add):
     return names, info
 
 
-def _read_manifest(path: Path):
+def _read_manifest(path: Path, target: str):
     if not path.is_file():
         return None
     try:
@@ -450,6 +472,12 @@ def _read_manifest(path: Path):
         raise ValueError(f'Install manifest is not valid JSON: {path}. Fix or remove it.') from error
     if not isinstance(manifest, dict) or not isinstance(manifest.get('files'), list):
         raise ValueError(f'Install manifest has no file list: {path}. Fix or remove it.')
+    found = manifest.get('target')
+    if found != target:
+        owner = (f'belongs to the {found} target, not {target}' if found in TARGETS
+                 else f'names no valid target ({found!r})')
+        raise ValueError(f'Install manifest {path} {owner}. Each home holds the manifest of one target: point '
+                         '--codex-home or --claude-home to the right directory, or fix or remove the manifest.')
     return manifest
 
 
@@ -466,7 +494,7 @@ def _recorded_path(value, label) -> Path:
     return path
 
 
-def _manifest_files(manifest, allowed):
+def _manifest_files(manifest, allowed, label):
     """Yield (entry, path) for files a previous install recorded. The manifest's own roots are not
     trusted: every path must have one of the shapes this installer writes (`allowed(path)`)."""
     if not manifest:
@@ -477,7 +505,9 @@ def _manifest_files(manifest, allowed):
             raise ValueError(f'Install manifest has an invalid file entry: {entry!r}. Fix or remove the manifest.')
         path = _recorded_path(entry.get('path'), 'file path')
         if not allowed(path):
-            raise ValueError(f'Install manifest lists an unexpected file: {path}')
+            raise ValueError(f'Install manifest lists an unexpected file: {path}. If the home directory was moved, '
+                             f'the manifest still names the old location: fix the paths in {label} or remove it, '
+                             'then rerun.')
         yield entry, path
 
 
@@ -518,18 +548,43 @@ def _check_path_lengths(paths):
 
 
 def _write_atomic(destination: Path, data: bytes):
+    """Write through a temporary file that never outlives a failure. On POSIX a replaced file keeps
+    its permission bits (config.toml can hold secrets); on Windows the mode is only a read-only flag."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + '.' + uuid.uuid4().hex[:8] + '.tmp')
-    temporary.write_bytes(data)
-    os.replace(temporary, destination)
+    try:
+        if os.name != 'nt' and destination.exists():
+            temporary.touch(mode=0o600, exist_ok=False)  # private until it takes the destination's mode
+            temporary.write_bytes(data)
+            shutil.copymode(destination, temporary)
+        else:
+            temporary.write_bytes(data)
+        os.replace(temporary, destination)
+    except BaseException:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     if destination.read_bytes() != data:
         raise IOError(f'Installed contents differ: {destination}')
 
 
+def _is_link(path: Path) -> bool:
+    """A symlink or a Windows junction. Path.is_junction needs Python 3.12, so read the reparse tag."""
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISLNK(info.st_mode) or (
+        getattr(info, 'st_reparse_tag', 0) == getattr(stat, 'IO_REPARSE_TAG_MOUNT_POINT', None))
+
+
 def _remove_empty_dirs(files, roots):
-    """Remove directories emptied by this run, but only inside directories this tool owns."""
+    """Remove directories emptied by this run, but only inside directories this tool owns. A link
+    stays: removing it would remove a link the user made, not a directory this tool created."""
     for directory in sorted({file.parent for file in files}, key=lambda path: len(path.parts), reverse=True):
-        while any(directory.is_relative_to(root) for root in roots):
+        while any(directory.is_relative_to(root) for root in roots) and not _is_link(directory):
             try:
                 directory.rmdir()
             except OSError:
@@ -566,9 +621,9 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
         # One manifest per home: a shared home would let one target overwrite the other's record.
         raise ValueError('The Codex and Claude Code homes are the same directory; '
                          'use separate --codex-home and --claude-home directories, or install one target at a time.')
-    previous = {t: _read_manifest(manifests[t]) for t in targets}
+    previous = {t: _read_manifest(manifests[t], t) for t in targets}
 
-    skill_dirs, owned_dirs, skill_roots = {}, [], []
+    skill_dirs, owned_dirs, skill_roots, shim_dirs = {}, [], [], set()
     if 'codex' in targets:
         before = previous['codex'] or {}
         recorded_skills = before.get('skills_dir') and _recorded_path(before['skills_dir'], 'skills_dir')
@@ -577,6 +632,13 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
         skills_dir = Path(skills_dir or recorded_skills or _default_skills_dir()).expanduser().resolve()
         if bin_dir is None:
             bin_dir = recorded_bin or None
+        # The launcher shim lives in the recorded bin directory or the one this run uses (the APPDATA
+        # default when neither is given), never in an arbitrary directory a damaged manifest names.
+        appdata = os.environ.get('APPDATA')
+        current_bin = bin_dir or (Path(appdata) / 'npm' if appdata else None)
+        for directory in (recorded_bin, current_bin):
+            if directory:
+                shim_dirs |= {Path(directory), Path(directory).expanduser().resolve()}
         skill_dirs['codex'] = skills_dir / SKILL
         skill_roots = [skills_dir / SKILL] + ([recorded_skills / SKILL] if recorded_skills else [])
         owned_dirs += [codex_home / 'tools' / 'codex-team', codex_home / INSTALL_MANIFEST.parent, *skill_roots]
@@ -589,13 +651,14 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
         if t == 'codex':
             agents, launcher = codex_home / 'agents', codex_home / 'tools' / 'codex-team'
             return lambda path: ((path.parent == agents and path.suffix == '.toml')
-                                 or path.is_relative_to(launcher) or path.name == 'codex-team.cmd'
+                                 or path.is_relative_to(launcher)
+                                 or (path.name == 'codex-team.cmd' and path.parent in shim_dirs)
                                  or any(path.is_relative_to(root) for root in skill_roots))
         return lambda path: ((path.parent == claude_home / 'agents' and path.suffix == '.md')
                              or (path.parent == claude_home / 'workflows' and path.suffix == '.js')
                              or path.is_relative_to(skill_dirs['claude']))
 
-    recorded = {t: list(_manifest_files(previous[t], allowed(t))) for t in targets}
+    recorded = {t: list(_manifest_files(previous[t], allowed(t), manifests[t])) for t in targets}
     created = {}
     for t in targets:
         made = (previous[t] or {}).get('created_dirs') or []
@@ -626,10 +689,13 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
 
     report = {'version': release['version'], 'dry_run': dry_run, 'uninstall': uninstall, 'targets': {}}
     notes = []
-    guards, selected = [], {t: [] for t in targets}
+    guards, selected, all_packs = [], {t: [] for t in targets}, {t: False for t in targets}
     if not uninstall:
-        selected = _select_packs(packs, release, targets,
-                                 {t: (previous[t] or {}).get('packs') for t in targets})
+        selected, all_packs, missing = _select_packs(packs, release, targets, previous)
+        if missing:
+            notes.append(f'The previous install selected packs that this release no longer has: {", ".join(missing)}. '
+                         'They are skipped; rerun with --packs to choose from '
+                         f'{", ".join(release["packs"])}, or all.')
         if 'codex' in targets:
             if with_cli is None:
                 with_cli = bool((previous['codex'] or {}).get('with_cli'))
@@ -675,6 +741,12 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
                for entry in carried['codex']):
             raise ValueError('Cannot change --skills-dir while modified files remain in the previous skills directory. '
                              'Back up and restore or remove those files, then rerun with the new directory.')
+    if 'codex' in targets and report['targets'].get('codex', {}).get('launcher') \
+            and any(Path(entry['path']).name == 'codex-team.cmd' for entry in carried['codex']):
+        # A kept shim is never the planned one, so it lies in the previous bin directory, which the
+        # manifest could then no longer name.
+        raise ValueError('Cannot change --bin-dir while a modified codex-team.cmd remains in the previous bin '
+                         'directory. Back up and restore or remove it, then rerun with the new directory.')
     # Role files no install manifest tracks (a v1 install, or copied by hand) that carry the name of
     # a role outside the selected packs: this run neither updates nor removes them unless asked to.
     unmanaged = []
@@ -775,52 +847,84 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
             created[file.target].add(directory)
             directory = directory.parent
 
-    backed_up = {}
-    for path, t in conflicts + [(path, t) for path, t, backup in removals if backup]:
-        backed_up.setdefault(t, []).append(path)
-    if backed_up:
-        stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
-        report['backups'] = []
-        for t, files in backed_up.items():
-            backup = homes[t] / 'agent-backups' / f'{INSTALL_NAME}-{stamp}'
-            for index, file in enumerate(files):
-                copy = backup / str(index) / file.name
-                copy.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(file, copy)
-            (backup / 'restore-map.txt').write_text(
-                '\n'.join(f'{i}/{p.name}\t{p}' for i, p in enumerate(files)), encoding='utf-8')
-            report['backups'].append(str(backup))
-    for path, _, _ in removals:
-        path.unlink()
-    for file in writes:
-        _write_atomic(file.path, file.data)
+    previous_entries = {t: {path.resolve(): entry for entry, path in recorded[t]} for t in targets}
+
+    def save_manifest(t, pending) -> bool:
+        """Record what target t holds now, with this run's pack selection. Planned files hold the new
+        data, except `pending` ones a failed run did not reach: those, and pending removals, keep the
+        previous install's entry. Returns False, writing nothing, when nothing is left to record."""
+        entries = [{'path': str(file.path), 'sha256': _sha256(file.data)}
+                   for file in plan if file.target == t and file.owned and file.path not in pending]
+        kept_entries = [previous_entries[t][path.resolve()] for path in pending
+                        if path.resolve() in previous_entries[t]] + carried[t]
+        entries += kept_entries
+        if not entries and (uninstall or not pending):
+            return False
+        manifest_roots = set(roots[t])
+        if kept_entries and previous[t]:
+            manifest_roots.update(_recorded_path(root, 'root') for root in previous[t].get('roots', []))
+        launcher = report['targets'][t].get('launcher')
+        shims = [Path(entry['path']).parent for entry in entries if Path(entry['path']).name == 'codex-team.cmd']
+        if launcher:
+            launcher_dir = str(Path(launcher).parent)
+        elif shims:  # a modified shim this run keeps: the next run must still accept its directory
+            launcher_dir = str(shims[0])
+        else:  # an uninstall still remembers where the shim was
+            launcher_dir = str(bin_dir) if uninstall and t == 'codex' and bin_dir else None
+        extra = {'skills_dir': str(skills_dir) if t == 'codex' else None, 'bin_dir': launcher_dir,
+                 'created_dirs': sorted(str(directory) for directory in created[t] if directory.is_dir()),
+                 'all_packs': all_packs[t]}
+        data = _manifest_bytes(release, t, selected[t], with_cli and t == 'codex', manifest_roots, entries, extra)
+        if not manifests[t].exists() or manifests[t].read_bytes() != data:
+            _write_atomic(manifests[t], data)
+        return True
+
+    pending = {file.path for file in writes} | {path for path, _, _ in removals}
+    try:
+        backed_up = {}
+        for path, t in conflicts + [(path, t) for path, t, backup in removals if backup]:
+            backed_up.setdefault(t, []).append(path)
+        if backed_up:
+            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
+            report['backups'] = []
+            for t, files in backed_up.items():
+                backup = homes[t] / 'agent-backups' / f'{INSTALL_NAME}-{stamp}'
+                for index, file in enumerate(files):
+                    copy = backup / str(index) / file.name
+                    copy.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(file, copy)
+                (backup / 'restore-map.txt').write_text(
+                    '\n'.join(f'{i}/{p.name}\t{p}' for i, p in enumerate(files)), encoding='utf-8')
+                report['backups'].append(str(backup))
+        for path, _, _ in removals:
+            path.unlink()
+            pending.discard(path)
+        for file in writes:
+            _write_atomic(file.path, file.data)
+            pending.discard(file.path)
+    except BaseException:
+        # A file failed to write or to be removed (locked, read-only). Record the real state and the
+        # new selection, so that a plain rerun finishes this run instead of undoing part of it.
+        for t in targets:
+            try:
+                save_manifest(t, pending)
+            except Exception:  # keep the original error
+                pass
+        raise
 
     emptied, leftover_dirs = [path for path, _, _ in removals], []
     for t in targets:
-        entries = [{'path': str(file.path), 'sha256': _sha256(file.data)}
-                   for file in plan if file.target == t and file.owned]
-        if not entries and not carried[t]:
+        if not save_manifest(t, set()):
             if manifests[t].exists():
                 manifests[t].unlink()
                 emptied.append(manifests[t])
             leftover_dirs += [directory for directory in created[t] if near_install(directory)]
-            continue
-        if carried[t]:
-            roots[t].update(_recorded_path(root, 'root') for root in previous[t].get('roots', []))
-        launcher = report['targets'][t].get('launcher')
-        if launcher:
-            launcher_dir = str(Path(launcher).parent)
-        else:  # an uninstall that keeps modified files still remembers where the shim was
-            launcher_dir = str(bin_dir) if uninstall and t == 'codex' and bin_dir else None
-        extra = {'skills_dir': str(skills_dir) if t == 'codex' else None, 'bin_dir': launcher_dir,
-                 'created_dirs': sorted(str(directory) for directory in created[t] if directory.is_dir())}
-        data = _manifest_bytes(release, t, selected[t], with_cli and t == 'codex', roots[t],
-                               entries + carried[t], extra)
-        if not manifests[t].exists() or manifests[t].read_bytes() != data:
-            _write_atomic(manifests[t], data)
     _remove_empty_dirs(emptied, owned_dirs)
     # After an uninstall, remove the directories the installs created, deepest first, if now empty.
+    # A link stays: the user replaced the directory with it.
     for directory in sorted(leftover_dirs, key=lambda path: len(path.parts), reverse=True):
+        if _is_link(directory):
+            continue
         try:
             directory.rmdir()
         except OSError:

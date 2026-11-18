@@ -54,6 +54,7 @@ ACCESS_NOTES = {
 CLAUDE_COLORS = frozenset({"red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan"})
 DEFAULT_KEYWORDS = ("orchestration", "multi-agent", "subagents")
 CATALOG_SOURCE = "references/roles.md"  # the only skill file that may use {{role-catalog}}
+REQUIRED_SKILL_FILES = ("SKILL.md", CATALOG_SOURCE)  # must render non-empty for every platform
 # {{name}} tokens that render a manifest value as is.
 SCALAR_TOKENS = ("version", "repository", "marketplace")
 
@@ -71,7 +72,15 @@ KEBAB = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
 VERSION = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?")
 REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 # Characters that cannot appear unescaped in one-line values shared by TOML, YAML and JSON output.
-LINE_UNSAFE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+# U+FEFF (BOM) and the noncharacters U+FFFE and U+FFFF are not safe in any of those formats either.
+LINE_UNSAFE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029\ufeff\ufffe\uffff]")
+# Words YAML 1.1 reads as a boolean or null: a role id is written unquoted as `name: <id>`.
+YAML_RESERVED = frozenset({"true", "false", "yes", "no", "on", "off", "null", "y", "n", "~"})
+# The role instruction structure of docs/architecture.md: exactly these `##` headings, in order.
+ROLE_HEADINGS = ("Before you start", "Method", "Deliverable", "Quality checks", "Handoffs and boundaries")
+HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*")
+FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
+SHORT_DESCRIPTION_RANGE = (25, 64)
 # Characters a TOML multi-line literal string cannot contain (tab and LF are allowed).
 LITERAL_UNSAFE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 MARKER = re.compile(r"[ \t]*<!--[ \t]*@([A-Za-z0-9_-]+)[ \t]*-->[ \t]*")
@@ -235,6 +244,10 @@ def load_source(src: Path) -> Source:
         "display_name": _line(skill_table["display_name"], f"{ml} [skill] display_name"),
         "short_description": _line(skill_table["short_description"], f"{ml} [skill] short_description"),
     }
+    low, high = SHORT_DESCRIPTION_RANGE
+    if not low <= len(skill["short_description"]) <= high:
+        raise BuildError(f"{ml} [skill] short_description has {len(skill['short_description'])} characters; "
+                         f"it must have {low} to {high}")
     if "legacy" in manifest and not isinstance(manifest["legacy"], dict):
         raise BuildError(f"{ml}: [legacy] must be a table")
 
@@ -282,6 +295,9 @@ def load_source(src: Path) -> Source:
         data = _parse_toml(text, rl)
         _check_keys(data, rl, ROLE_REQUIRED, ROLE_OPTIONAL)
         role_id = _kebab(data["id"], f"{rl}: id")
+        if role_id.lower() in YAML_RESERVED:
+            raise BuildError(f"{rl}: id {role_id!r} is read as a boolean or null by YAML "
+                             "(the Claude agent frontmatter writes it unquoted)")
         if role_id != path.stem:
             raise BuildError(f"{rl}: id {role_id!r} must equal the file stem {path.stem!r}")
         if role_id in found:
@@ -359,6 +375,7 @@ def render_text(text: str, platform: str, source: Source, label: str, *, catalog
         elif MARKER_ANYWHERE.search(line):
             raise BuildError(f"{label}:{number}: a platform block marker must be alone on its line")
         elif block is not None and block[0] != platform:
+            _check_stray_braces(line, number, label)
             items.append(_REMOVED)
         else:
             items.append(_render_tokens(line, number, platform, source, label, catalog))
@@ -389,7 +406,45 @@ def _render_tokens(line: str, number: int, platform: str, source: Source, label:
         raise BuildError(f"{label}:{number}: unknown template token {match.group(0)} (expected {{{{role:<id>}}}}, "
                          + ", ".join("{{" + name + "}}" for name in SCALAR_TOKENS) + " or {{role-catalog}})")
 
-    return TOKEN.sub(replace, line)
+    rendered = TOKEN.sub(replace, line)
+    _check_stray_braces(line, number, label)
+    return rendered
+
+
+def _check_stray_braces(line: str, number: int, label: str) -> None:
+    """The engine is line-based: a `{{` without its `}}` on the same line (including a token split
+    across lines) or a stray `}}` would otherwise pass through as literal text."""
+    rest = TOKEN.sub("", line)
+    if "{{" in rest:
+        raise BuildError(f"{label}:{number}: unclosed {{{{ (a token must open and close on one line)")
+    if "}}" in rest:
+        raise BuildError(f"{label}:{number}: stray }}}} without a matching {{{{")
+
+
+def check_role_structure(text: str, label: str) -> None:
+    """Rendered role instructions must use exactly the five `##` headings in order and no other
+    heading level outside fenced code blocks (docs/architecture.md, Role instruction structure)."""
+    headings: list[str] = []
+    fence: str | None = None
+    for line in text.split("\n"):
+        opened = FENCE.match(line)
+        if fence is not None:
+            if (opened and opened.group(1)[0] == fence[0] and len(opened.group(1)) >= len(fence)
+                    and not line.strip().strip(fence[0])):
+                fence = None
+            continue
+        if opened:
+            fence = opened.group(1)
+            continue
+        heading = HEADING.fullmatch(line)
+        if heading:
+            if len(heading.group(1)) != 2:
+                raise BuildError(f"{label}: only `##` headings are allowed in role instructions "
+                                 f"(found {line.strip()!r})")
+            headings.append((heading.group(2) or "").strip())
+    if tuple(headings) != ROLE_HEADINGS:
+        raise BuildError(f"{label}: instructions must use exactly these `##` headings in order: "
+                         f"{', '.join(ROLE_HEADINGS)} (found: {', '.join(headings) or 'none'})")
 
 
 def _collapse(items: list) -> list[str]:
@@ -535,7 +590,25 @@ def _skill_sources(source: Source) -> list[tuple[str, str]]:
         if rel.startswith("references/roles/"):
             raise BuildError(f"{label}: references/roles/ is generated from src/roles")
         files.append((rel, _read_text(path, label)))
+    if CATALOG_SOURCE not in {rel for rel, _ in files}:
+        raise BuildError(f"{source.root.name}/skill/{CATALOG_SOURCE}: missing (it carries the role catalog)")
     return sorted(files)
+
+
+def _check_required_skill_file(source: Source, rel: str, rendered: str, platform: str, label: str) -> None:
+    where = f"{label} (rendered for {platform})"
+    if not rendered:
+        raise BuildError(f"{where}: renders empty, but the skill needs it on every platform")
+    if rel == "SKILL.md":
+        lines = rendered.split("\n")
+        end = lines.index("---", 1) if lines[0] == "---" and "---" in lines[1:] else None
+        if end is None:
+            raise BuildError(f"{where}: must start with --- frontmatter that is closed by ---")
+        if f"name: {source.skill['name']}" not in lines[1:end]:
+            raise BuildError(f"{where}: frontmatter must contain `name: {source.skill['name']}` "
+                             "(the manifest [skill] name)")
+    elif role_catalog(source, platform) not in rendered:
+        raise BuildError(f"{where}: must contain the role catalog (a line with only {{{{role-catalog}}}})")
 
 
 def _workflow_sources(source: Source) -> list[tuple[str, str]]:
@@ -551,7 +624,10 @@ def _workflow_sources(source: Source) -> list[tuple[str, str]]:
             raise BuildError(f"{label}: only Workflow scripts (*.js files, no subdirectories) belong in workflows/")
         text = _read_text(path, label).rstrip("\n") + "\n"
         meta = WORKFLOW_META.match(text)
-        if not meta or meta.group(2) != path.stem or not KEBAB.fullmatch(path.stem):
+        if not path.stem.startswith("team-") or not KEBAB.fullmatch(path.stem):
+            raise BuildError(f"{label}: Workflow scripts are named team-<name>.js (kebab-case), so they "
+                             "never become generic commands")
+        if not meta or meta.group(2) != path.stem:
             raise BuildError(f"{label}: must start with `export const meta = {{ name: '{path.stem}'` "
                              "(meta.name first, equal to the kebab-case file stem)")
         files.append((path.name, text))
@@ -577,7 +653,14 @@ def render(src: Path) -> dict[str, bytes]:
                                              first_line=role.instructions_line))
             if not instructions:
                 raise BuildError(f"{role.label}: instructions render empty for {platform}")
+            check_role_structure(instructions, f"{role.label} (rendered for {platform})")
             bodies[role.id, platform] = f"{instructions}\n\n{common[platform]}" if common[platform] else instructions
+
+    for pack in source.packs.values():
+        for platform in pack.platforms:
+            if not any(role.pack == pack.id and platform in role.platforms for role in source.roles.values()):
+                raise BuildError(f"{source.root.name}/manifest.toml [packs.{pack.id}]: no role is built for "
+                                 f"{platform}, so its {platform} output would be empty")
 
     core = source.packs["core"]
     skill_name = source.skill["name"]
@@ -587,6 +670,8 @@ def render(src: Path) -> dict[str, bytes]:
         for rel, text in skill_files:
             label = f"{source.root.name}/skill/{rel}"
             rendered = _trim(render_text(text, platform, source, label, catalog=rel == CATALOG_SOURCE))
+            if rel in REQUIRED_SKILL_FILES:
+                _check_required_skill_file(source, rel, rendered, platform, label)
             if rendered:  # a file wholly inside the other platform's block is not generated
                 emit(f"{bases[platform]}/{rel}", rendered + "\n")
         for role in source.roles_for(platform):
@@ -737,6 +822,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         changed = write(outputs, root)
     except BuildError as exc:
+        print(f"build.py: error: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:  # exit 2 is an error; exit 1 stays reserved for drift in --check
         print(f"build.py: error: {exc}", file=sys.stderr)
         return 2
     for path in changed:

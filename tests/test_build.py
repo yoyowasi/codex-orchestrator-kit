@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -96,10 +97,20 @@ Only for Claude Code.
 <!-- @end -->
 """
 
-WORKFLOW = "export const meta = { name: 'review' };\nconsole.log('{{not a token}}');\n"
+WORKFLOW = "export const meta = { name: 'team-review' };\nconsole.log('{{not a token}}');\n"
 
 
-def role_toml(role_id, pack, description, instructions, access=None, platforms=None):
+HEADINGS = ("Before you start", "Method", "Deliverable", "Quality checks", "Handoffs and boundaries")
+
+
+def structured(body):
+    """Put `body` under the first required heading and fill the other four."""
+    return f"## {HEADINGS[0]}\n{body}" + "".join(f"\n## {heading}\n- Filler.\n" for heading in HEADINGS[1:])
+
+
+def role_toml(role_id, pack, description, instructions, access=None, platforms=None, raw=False):
+    if not raw:
+        instructions = structured(instructions)
     lines = [f'id = "{role_id}"', f'pack = "{pack}"', f"description = '{description}'"]
     if access:
         lines.append(f'access = "{access}"')
@@ -309,7 +320,8 @@ class OutputTests(BuildTestCase):
             self.assertNotIn("model", text)
         checker = tomllib.loads(self.text(outputs, "codex/agents/code-checker.toml"))
         self.assertEqual(checker["description"], 'Checks "quoted" paths like C:\\temp | naive text.')
-        self.assertEqual(checker["developer_instructions"], "- Run checks; never edit files.\n\n" + common)
+        self.assertEqual(checker["developer_instructions"],
+                         structured("- Run checks; never edit files.\n").rstrip("\n") + "\n\n" + common)
 
     def test_json_files(self):
         outputs = self.render()
@@ -350,7 +362,7 @@ class OutputTests(BuildTestCase):
             self.assertEqual(fields["name"], role_id)
             self.assertEqual(fields["color"], "blue" if plugin == "orchestra" else "green")
             self.assertIsInstance(json.loads(fields["description"]), str)
-            self.assertTrue(body.startswith("\n- "))
+            self.assertTrue(body.startswith("\n## Before you start\n- "))
             self.assertTrue(body.endswith("\n\n## Working rules\n\n- Shared rule.\n- Message peers with SendMessage.\n"
                                           "- Report what you verified.\n"))
         _, fields, _ = frontmatter(self.text(outputs, "plugins/orchestra/agents/code-checker.md"))
@@ -367,7 +379,8 @@ class OutputTests(BuildTestCase):
         self.assertTrue(brief.startswith("# code-checker\n\nChecks \"quoted\" paths like C:\\temp | naive text.\n\n"
                                          "Runtime name: `code_checker`"))
         self.assertIn("\nAccess: `read-shell` - ", brief)
-        self.assertIn("- Run checks; never edit files.\n\n## Working rules\n", brief)
+        self.assertIn("- Run checks; never edit files.\n\n## Method\n", brief)
+        self.assertIn("- Filler.\n\n## Working rules\n", brief)
         claude_brief = self.text(outputs, "plugins/orchestra/skills/orchestrate/references/roles/doc-looker.md")
         self.assertIn("Runtime name: `orchestra-extra:doc-looker`", claude_brief)
         self.assertIn("SendMessage", claude_brief)
@@ -382,26 +395,28 @@ class OutputTests(BuildTestCase):
     def test_workflows_are_copied_and_optional(self):
         outputs = self.render()
         self.assertFalse([path for path in outputs if "/workflows/" in path])
-        outputs = self.render({"workflows/review.js": WORKFLOW, "workflows/.notes": "ignored\n"})
-        self.assertEqual(outputs["plugins/orchestra/workflows/review.js"], WORKFLOW.encode("utf-8"))
-        self.assertEqual([path for path in outputs if "/workflows/" in path], ["plugins/orchestra/workflows/review.js"])
+        outputs = self.render({"workflows/team-review.js": WORKFLOW, "workflows/.notes": "ignored\n"})
+        self.assertEqual(outputs["plugins/orchestra/workflows/team-review.js"], WORKFLOW.encode("utf-8"))
+        self.assertEqual([path for path in outputs if "/workflows/" in path],
+                         ["plugins/orchestra/workflows/team-review.js"])
 
     def test_invalid_workflows_are_rejected(self):
         cases = {
             "not a script": {"workflows/notes.txt": "notes\n"},
-            "module script": {"workflows/review.mjs": WORKFLOW},
-            "subdirectory": {"workflows/more/review.js": WORKFLOW},
-            "name differs from the file stem": {"workflows/team-review.js": WORKFLOW},
-            "meta not first": {"workflows/review.js": "// comment\n" + WORKFLOW},
+            "module script": {"workflows/team-review.mjs": WORKFLOW},
+            "subdirectory": {"workflows/more/team-review.js": WORKFLOW},
+            "name differs from the file stem": {"workflows/team-other.js": WORKFLOW},
+            "meta not first": {"workflows/team-review.js": "// comment\n" + WORKFLOW},
+            "file not named team-<name>": {"workflows/review.js": WORKFLOW.replace("team-review", "review")},
         }
         for name, overrides in cases.items():
             with self.subTest(name), self.assertRaises(build.BuildError):
                 self.render(overrides)
 
     def test_outputs_have_no_bom_or_crlf(self):
-        lf = self.render({"workflows/review.js": WORKFLOW})
+        lf = self.render({"workflows/team-review.js": WORKFLOW})
         windows = {rel: "\ufeff" + text.replace("\n", "\r\n") for rel, text in BASE_FILES.items()}
-        windows["workflows/review.js"] = "\ufeff" + WORKFLOW.replace("\n", "\r\n")
+        windows["workflows/team-review.js"] = "\ufeff" + WORKFLOW.replace("\n", "\r\n")
         crlf = self.render(windows)
         self.assertEqual(crlf, lf)
         for path, data in crlf.items():
@@ -490,6 +505,143 @@ class ValidationTests(BuildTestCase):
         self.assertIn("codex/agents/codex-helper.toml", outputs)
         builder = tomllib.loads(self.text(outputs, "codex/agents/code-builder.toml"))
         self.assertNotIn("sandbox_mode", builder)  # access defaults to write
+
+
+class SourceContractTests(BuildTestCase):
+    """Invalid sources that used to build green (docs/architecture.md is the contract)."""
+
+    def assertRejects(self, overrides, pattern=None):
+        with self.assertRaisesRegex(build.BuildError, pattern or ""):
+            self.render(overrides)
+
+    def test_required_skill_outputs_are_checked(self):
+        only_claude = "<!-- @claude -->\n---\nname: orchestrate\n---\n\nText.\n<!-- @end -->\n"
+        cases = {
+            "SKILL.md renders empty for codex": ({"skill/SKILL.md": only_claude}, "renders empty"),
+            "SKILL.md without frontmatter": ({"skill/SKILL.md": "# Orchestrate\n\nText.\n"}, "frontmatter"),
+            "SKILL.md with unclosed frontmatter": ({"skill/SKILL.md": "---\nname: orchestrate\n\n# Text\n"},
+                                                   "frontmatter"),
+            "SKILL.md with another name": ({"skill/SKILL.md": SKILL.replace("name: orchestrate", "name: other")},
+                                           "name: orchestrate"),
+            "SKILL.md name only in the body": ({"skill/SKILL.md": "---\ndescription: x\n---\nname: orchestrate\n"},
+                                               "name: orchestrate"),
+            "roles.md missing": ({"skill/references/roles.md": None}, "roles.md"),
+            "roles.md without the catalog line": ({"skill/references/roles.md": "# Roles\n\nNo table.\n"},
+                                                  "role catalog"),
+            "roles.md catalog only on claude": ({"skill/references/roles.md": (
+                "# Roles\n\n<!-- @claude -->\n{{role-catalog}}\n<!-- @end -->\n")}, "role catalog"),
+            "roles.md renders empty for codex": ({"skill/references/roles.md": (
+                "<!-- @claude -->\n" + ROLES_MD + "<!-- @end -->\n")}, "renders empty"),
+            "short_description of 24 characters": ({"manifest.toml": MANIFEST.replace(
+                "Coordinates test specialists.", "x" * 24)}, "short_description"),
+            "short_description of 65 characters": ({"manifest.toml": MANIFEST.replace(
+                "Coordinates test specialists.", "x" * 65)}, "short_description"),
+        }
+        for name, (overrides, pattern) in cases.items():
+            with self.subTest(name):
+                self.assertRejects(overrides, pattern)
+        for length in (25, 64):  # the boundaries are allowed
+            with self.subTest(length=length):
+                outputs = self.render({"manifest.toml": MANIFEST.replace("Coordinates test specialists.", "x" * length)})
+                self.assertIn("skills/orchestrate/SKILL.md", outputs)
+
+    def test_role_instruction_structure_is_enforced(self):
+        def role(instructions):
+            return {"roles/doc-looker.toml": role_toml("doc-looker", "extra", "Reads.", instructions,
+                                                       access="read-only", raw=True)}
+
+        def sections(*headings, body="- x\n"):
+            return "".join(f"## {heading}\n{body}\n" for heading in headings)
+
+        valid = sections(*HEADINGS)
+        misordered = sections(*HEADINGS[1:2], HEADINGS[0], *HEADINGS[2:])
+        cases = {
+            "no headings": "- Just bullets.\n",
+            "missing heading": sections(*HEADINGS[:-1]),
+            "extra ## heading": valid + "## Extras\n- x\n",
+            "wrong order": misordered,
+            "duplicate heading": valid + "## Method\n- x\n",
+            "renamed heading": valid.replace("## Method", "## Steps"),
+            "heading case differs": valid.replace("## Method", "## method"),
+            "### heading": valid + "### Detail\n- x\n",
+            "# title": "# Title\n" + valid,
+            "#### heading inside a section": valid.replace("- x\n", "#### Sub\n- x\n", 1),
+            "extra heading on one platform only": valid + "<!-- @codex -->\n## Codex notes\n- x\n<!-- @end -->\n",
+        }
+        for name, instructions in cases.items():
+            with self.subTest(name):
+                self.assertRejects(role(instructions), r"doc-looker\.toml")
+        # Headings inside fenced code blocks are examples, not structure.
+        fenced = valid.replace("- x\n", "```md\n# Title\n### Deep\n```\n~~~\n## Fake\n~~~\n", 1)
+        self.assertIn("plugins/orchestra-extra/agents/doc-looker.md", self.render(role(fenced)))
+
+    def test_workflow_files_are_named_team_name(self):
+        for name in ("review", "my_review", "Team-review", "team-"):
+            with self.subTest(name):
+                self.assertRejects({f"workflows/{name}.js": WORKFLOW.replace("team-review", name)})
+
+    def test_unbalanced_braces_report_file_and_line(self):
+        cases = {
+            "unclosed token": ("skill/references/extra.md", "ok\nUse {{version here.\n", "extra.md:2:"),
+            "stray close": ("skill/references/extra.md", "ok\nok\nUse version}} here.\n", "extra.md:3:"),
+            "token split across lines": ("skill/references/extra.md", "ok\n{{role:\ncode-checker}}\n", "extra.md:2:"),
+            "unclosed after a valid token": ("skill/references/extra.md", "{{version}} and {{repository\n",
+                                             "extra.md:1:"),
+            "stray close after a valid token": ("skill/references/extra.md", "{{version}} }}\n", "extra.md:1:"),
+            "in the other platform's block": ("skill/references/extra.md",
+                                              "<!-- @codex -->\nUse {{version\n<!-- @end -->\n", "extra.md:2:"),
+            "in common rules": ("roles/_common.md", COMMON + "- {{role:code-checker\n", "_common.md:11:"),
+        }
+        for name, (path, text, where) in cases.items():
+            with self.subTest(name):
+                self.assertRejects({path: text}, re.escape(where))
+        source = role_toml("doc-looker", "extra", "Reads.", "- Read.\n- Ask {{role:code-checker.\n")
+        line = source.splitlines().index("- Ask {{role:code-checker.") + 1
+        self.assertRejects({"roles/doc-looker.toml": source}, rf"doc-looker\.toml:{line}:")
+
+    def test_a_pack_must_have_a_role_for_each_of_its_platforms(self):
+        self.assertRejects({"roles/doc-looker.toml": None}, r"packs\.extra\].*claude")
+        self.assertRejects({"roles/codex-helper.toml": None, "roles/code-builder.toml": role_toml(
+            "code-builder", "core", "Builds code; pick it for implementation.", "- x\n")},
+            r"packs\.codex-only\].*codex")
+        # Every role of the pack limited to the other platform leaves the first one empty.
+        self.assertRejects({"roles/doc-looker.toml": role_toml(
+            "doc-looker", "extra", "Reads.", "- x\n", access="read-only", platforms=["codex"])},
+            r"packs\.extra\].*claude")
+
+    def test_role_ids_that_yaml_reads_as_booleans_or_null_are_rejected(self):
+        for role_id in ("true", "false", "yes", "no", "on", "off", "null", "y", "n"):
+            with self.subTest(role_id):
+                self.assertRejects({f"roles/{role_id}.toml": role_toml(role_id, "extra", "Reads.", "- x\n")},
+                                   "boolean or null")
+        outputs = self.render({"roles/yesterday.toml": role_toml("yesterday", "extra", "Reads.", "- x\n")})
+        self.assertIn("name: yesterday\n", self.text(outputs, "plugins/orchestra-extra/agents/yesterday.md"))
+
+    def test_one_line_values_reject_bom_and_noncharacters(self):
+        for char in ("﻿", "￾", "￿"):
+            with self.subTest(hex(ord(char))):
+                self.assertRejects({"roles/doc-looker.toml": role_toml(
+                    "doc-looker", "extra", f"Reads{char}docs.", "- x\n", access="read-only")}, "description")
+
+
+class CliErrorTests(BuildTestCase):
+    def test_os_errors_exit_2_with_a_one_line_error_and_drift_stays_1(self):
+        repo = self.root / "repo"
+        make_src(repo)
+        (repo / "plugins").write_bytes(b"a plain file where the generated root belongs\n")
+        script = str(REPO / "scripts/build.py")
+
+        def run(*args):
+            return subprocess.run([sys.executable, script, "--root", str(repo), *args], capture_output=True)
+
+        result = run()
+        # The OS error text is localized (not necessarily UTF-8), so decode leniently.
+        stderr = result.stderr.decode("utf-8", errors="replace")
+        self.assertEqual(result.returncode, 2, stderr)
+        self.assertNotIn("Traceback", stderr)
+        self.assertEqual(len(stderr.strip().splitlines()), 1)
+        self.assertTrue(stderr.startswith("build.py: error: "))
+        self.assertEqual(run("--check").returncode, 1)  # drift is still 1
 
 
 class WriteCheckTests(BuildTestCase):

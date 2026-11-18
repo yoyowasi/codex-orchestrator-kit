@@ -31,7 +31,7 @@ python scripts/install.py --uninstall          # remove what it installed
 | Option | Default | Effect |
 |---|---|---|
 | `--target codex\|claude\|all` | `codex` | Where to install. `claude` is the [script install for Claude Code](claude-code.md#script-install-without-plugins); `all` does both. |
-| `--packs LIST` | the packs installed before, otherwise `core` | Comma-separated pack names, or `all`. `core` is always included. The list replaces the previous selection, so name every pack to keep; roles of packs you drop are removed if unchanged. |
+| `--packs LIST` | the packs installed before, otherwise `core` | Comma-separated pack names, or `all`. `core` is always included. The list replaces the previous selection, so name every pack to keep; roles of packs you drop are removed if unchanged. `all` is remembered as all, so a later rerun without `--packs` also installs packs a newer release adds. |
 | `--codex-home PATH` | `CODEX_HOME`, otherwise `~/.codex` | Codex home for roles, `config.toml`, the install manifest, backups and the launcher. |
 | `--skills-dir PATH` | as installed before, otherwise `~/.agents/skills` | Directory that receives the `orchestrate` skill folder. |
 | `--claude-home PATH` | `CLAUDE_CONFIG_DIR`, otherwise `~/.claude` | Claude Code config directory, for `--target claude` or `all`. |

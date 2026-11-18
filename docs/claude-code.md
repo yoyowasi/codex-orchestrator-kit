@@ -153,7 +153,7 @@ The core plugin ships two fixed-round pipelines, used only when you ask for them
 | Command | What it does | Input |
 |---|---|---|
 | `/orchestra:team-review` | Read-only code review: one agent scopes the change, then correctness, security and missing-test lenses run in parallel, and a fresh verifier tries to refute every finding. Returns only findings that survived, plus the dropped ones and any lens that failed. | a target, such as `the changes on this branch against main`, or JSON `{"target": "...", "focus": "..."}`; default is the uncommitted diff |
-| `/orchestra:team-research` | Sourced research: plans 3 to 6 sub-questions, researches each, checks every claim against its cited source, then writes a cited answer with uncertainty and open questions. | a question, or JSON `{"question": "...", "depth": "quick"}` with depth `quick`, `standard` (default) or `deep` |
+| `/orchestra:team-research` | Sourced research: plans 3 to 6 sub-questions, researches each, checks every claim against its cited source, then writes a cited answer with uncertainty and open questions. Besides the answer and the verified and dropped claims, it returns the sub-questions, the ones that returned nothing, the research gaps and the scope assumptions, so lost coverage is visible. | a question, or JSON `{"question": "...", "depth": "quick"}` with depth `quick`, `standard` (default) or `deep` |
 
 ```text
 /orchestra:team-review the changes on this branch against main

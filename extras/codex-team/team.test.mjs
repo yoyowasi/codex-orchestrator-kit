@@ -4,7 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import {normalizeOwned,scopesOverlap,TeamControl,parseModels,teamModels,modelSettings,coordinatorModel,
-  coordinatorInstructions,teamTools,flagValue,startOptions,Rpc,TeamLink,DEFAULT_TEAM_MODELS} from './codex-team.mjs';
+  coordinatorInstructions,teamTools,flagValue,startOptions,Rpc,TeamLink,DEFAULT_TEAM_MODELS,serveMcp} from './codex-team.mjs';
+import {PassThrough} from 'node:stream';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
@@ -228,4 +229,169 @@ test('the team link reopens a dropped connection once, and does not retry the fa
   assert.equal(opened.length,2);
   assert.deepEqual(opened[0].calls,['a','fail']);
   assert.deepEqual(opened[1].calls,['b','c']);
+});
+
+// A manifest with the given thread ids, and a fake clock: sleeping advances it instantly.
+function waitFixture(t,roles){
+  const dir=tempDir(t,'codex-team-wait-');
+  const manifest=path.join(dir,'team.json');
+  fs.writeFileSync(manifest,JSON.stringify({project:dir,members:Object.fromEntries(roles.map(r=>[r,{role:r,threadId:r}]))}));
+  const clock={t:0,sleeps:0};
+  const opts={now:()=>clock.t,sleep:async ms=>{if(++clock.sleeps>200)throw new Error('wait never ended');clock.t+=ms;}};
+  return {dir,manifest,clock,opts};
+}
+const thread=(type,turnStatus='inProgress',activeFlags)=>({thread:{status:{type,...(activeFlags?{activeFlags}:{})},turns:turnStatus?[{id:'t1',status:turnStatus,items:[]}]:[]}});
+
+test('team_wait with a non-numeric seconds falls back to 30 and still times out',async t=>{
+  const {manifest,clock,opts}=waitFixture(t,['a']);
+  const ctl=new TeamControl(manifest,{call:async()=>thread('active')},opts);
+  for(const bad of ['abc',NaN,{},undefined]){
+    clock.t=0;clock.sleeps=0;
+    const r=await ctl.wait({seconds:bad});
+    assert.equal(r.timedOut,true);
+    assert.equal(clock.t,30000);
+  }
+  clock.t=0;
+  await ctl.wait({seconds:500});
+  assert.equal(clock.t,45000);
+});
+
+test('team_wait ignores a worker that was already waiting and reports it',async t=>{
+  const {manifest,clock,opts}=waitFixture(t,['a','b']);
+  let reads=0;
+  const rpc={call:async(m,p)=>{
+    if(p.threadId==='a')return thread('active','inProgress',['waitingOnApproval']);
+    reads++;
+    return reads>3?thread('idle','completed'):thread('active');
+  }};
+  const r=await new TeamControl(manifest,rpc,opts).wait({});
+  assert.ok(reads>3);
+  assert.equal(r.timedOut,false);
+  assert.deepEqual(r.waiting,['a']);
+  assert.equal(r.needsInput,true);
+  assert.ok(clock.t>=6000);
+});
+
+test('team_wait returns at once when a worker starts waiting during the call',async t=>{
+  const {manifest,opts}=waitFixture(t,['a','b']);
+  let reads=0;
+  const rpc={call:async(m,p)=>{
+    if(p.threadId==='a')return thread('active');
+    return ++reads>2?thread('active','inProgress',['waitingOnUserInput']):thread('active');
+  }};
+  const r=await new TeamControl(manifest,rpc,opts).wait({});
+  assert.deepEqual(r.waiting,['b']);
+  assert.equal(r.needsInput,true);
+  assert.equal(r.timedOut,false);
+});
+
+test('team_wait bounds every read by the time left and stays under 60 seconds',async t=>{
+  const {manifest,clock,opts}=waitFixture(t,['a']);
+  const rpc={call:async(m,p,timeout)=>{
+    assert.ok(Number.isFinite(timeout)&&timeout<=30000,`timeout ${timeout}`);
+    assert.ok(clock.t+timeout<=55000,'read may outlast the budget');
+    clock.t+=Math.min(20000,timeout);
+    return thread('active');
+  }};
+  await new TeamControl(manifest,rpc,opts).wait({seconds:45});
+  assert.ok(clock.t<60000,`took ${clock.t}`);
+});
+
+test('a notLoaded thread is not running even when its last turn is inProgress',async t=>{
+  const {manifest,opts}=waitFixture(t,['a','b']);
+  const calls=[];
+  const rpc={call:async(m,p)=>{
+    calls.push(m);
+    if(m==='turn/start')return {turn:{id:'n1',status:'inProgress'}};
+    return thread(p.threadId==='b'?'notLoaded':'idle','inProgress');
+  }};
+  const ctl=new TeamControl(manifest,rpc,opts);
+  assert.equal((await ctl.wait({roles:['b']})).timedOut,false);
+  assert.deepEqual(await ctl.interrupt({role:'b'}),{role:'b',status:'not_running'});
+  assert.equal((await ctl.dispatch({role:'b',task:'Review',read_only:true})).turnId,'n1');
+  assert.ok(calls.includes('thread/resume'));
+  assert.ok(!calls.includes('turn/interrupt'));
+});
+
+test('a notLoaded worker with a stale inProgress turn does not block an overlapping dispatch',async t=>{
+  const {manifest,opts}=waitFixture(t,['a','b']);
+  const team=JSON.parse(fs.readFileSync(manifest));team.members.b.ownedPaths=['src'];
+  fs.writeFileSync(manifest,JSON.stringify(team));
+  const rpc={call:async(m,p)=>m==='turn/start'?{turn:{id:'n1',status:'inProgress'}}:thread(p.threadId==='b'?'notLoaded':'idle',p.threadId==='b'?'inProgress':'completed')};
+  assert.equal((await new TeamControl(manifest,rpc,opts).dispatch({role:'a',task:'x',owned_paths:['src/x']})).turnId,'n1');
+});
+
+// Runs lines through serveMcp and returns the parsed replies.
+async function mcpRun(control,lines){
+  const input=new PassThrough(), output=new PassThrough();
+  let text='';output.on('data',d=>{text+=d;});
+  const done=serveMcp(control,input,output);
+  for(const l of lines)input.write(l+'\n');
+  input.end();await done;
+  return text.split('\n').filter(Boolean).map(l=>JSON.parse(l));
+}
+
+test('the MCP loop answers malformed input with JSON-RPC errors',async()=>{
+  const replies=await mcpRun({models:()=>[]},['{not json','[{"jsonrpc":"2.0","id":1,"method":"ping"}]','{"jsonrpc":"2.0","id":7}','{"jsonrpc":"2.0","id":2,"method":"ping"}']);
+  assert.deepEqual(replies.map(r=>[r.id,r.error?.code??null]),[[null,-32700],[null,-32600],[7,-32600],[2,null]]);
+});
+
+test('a long team_wait does not block ping, and dispatches never interleave',async()=>{
+  const events=[];
+  let release;const gate=new Promise(r=>{release=r;});
+  const control={
+    models:()=>[],
+    wait:async()=>{await gate;return {done:true};},
+    dispatch:async({role})=>{events.push(`start ${role}`);await new Promise(r=>setTimeout(r,20));events.push(`end ${role}`);return {role};},
+    interrupt:async({role})=>{events.push(`start int ${role}`);await new Promise(r=>setTimeout(r,5));events.push(`end int ${role}`);return {role};}
+  };
+  const call=(id,name,args)=>JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}});
+  const input=new PassThrough(), output=new PassThrough();
+  const got=[];output.on('data',d=>{for(const l of String(d).split('\n').filter(Boolean))got.push(JSON.parse(l));});
+  const done=serveMcp(control,input,output);
+  input.write(call(1,'team_wait',{})+'\n');
+  input.write('{"jsonrpc":"2.0","id":2,"method":"ping"}\n');
+  input.write(call(3,'team_dispatch',{role:'a'})+'\n');
+  input.write(call(4,'team_dispatch',{role:'b'})+'\n');
+  input.write(call(5,'team_interrupt',{role:'c'})+'\n');
+  await new Promise(r=>setTimeout(r,150));
+  assert.ok(got.some(r=>r.id===2),'ping answered while team_wait runs');
+  assert.ok(!got.some(r=>r.id===1));
+  release();input.end();await done;
+  assert.deepEqual(events,['start a','end a','start b','end b','start int c','end int c']);
+  const text=id=>JSON.parse(got.find(r=>r.id===id).result.content[0].text);
+  assert.deepEqual([text(1).done,text(3).role,text(4).role,text(5).role],[true,'a','b','c']);
+});
+
+test('owned_paths reject Windows path aliases and canonicalize junctions',{skip:process.platform!=='win32'},t=>{
+  const root=fs.realpathSync.native(tempDir(t,'codex-team-alias-'));
+  const project=path.join(root,'proj'), outside=path.join(root,'outside');
+  fs.mkdirSync(path.join(project,'real'),{recursive:true});fs.mkdirSync(outside);
+  assert.deepEqual(normalizeOwned(project,['src.','src ','SRC\\']),['src']);
+  assert.deepEqual(normalizeOwned(project,['a. /b.']),['a/b']);
+  for(const bad of ['src::$DATA','a:b/c','src/..  ','. .','.. /x'])
+    assert.throws(()=>normalizeOwned(project,[bad]),undefined,bad);
+  fs.symlinkSync(outside,path.join(project,'escape'),'junction');
+  fs.symlinkSync(path.join(project,'real'),path.join(project,'alias'),'junction');
+  assert.throws(()=>normalizeOwned(project,['escape/x']),/outside/);
+  assert.throws(()=>normalizeOwned(project,['escape']),/outside/);
+  assert.deepEqual(normalizeOwned(project,['alias/x']),['real/x']);
+});
+
+test('dispatch re-reads the manifest and keeps another member\'s concurrent update',async t=>{
+  const dir=tempDir(t,'codex-team-merge-');
+  const manifest=path.join(dir,'team.json');
+  fs.writeFileSync(manifest,JSON.stringify({project:dir,members:{a:{role:'a',threadId:'a',readOnly:true},b:{role:'b',threadId:'b',lastTurnId:'old'}}}));
+  const rpc={call:async(m)=>{
+    if(m==='turn/start'){
+      // Another process updates member b while this turn starts.
+      const other=JSON.parse(fs.readFileSync(manifest));other.members.b.lastTurnId='newer';fs.writeFileSync(manifest,JSON.stringify(other));
+      return {turn:{id:'a1',status:'inProgress'}};
+    }
+    return thread('idle','completed');
+  }};
+  await new TeamControl(manifest,rpc).dispatch({role:'a',task:'Review'});
+  const saved=JSON.parse(fs.readFileSync(manifest)).members;
+  assert.equal(saved.b.lastTurnId,'newer');
+  assert.equal(saved.a.lastTurnId,'a1');
 });
