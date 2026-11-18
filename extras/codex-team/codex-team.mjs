@@ -61,7 +61,8 @@ export class Rpc {
         const pending = this.pending.get(msg.id);
         if (pending) {
           this.pending.delete(msg.id); clearTimeout(pending.timer);
-          msg.error ? pending.reject(new Error(JSON.stringify(msg.error))) : pending.resolve(msg.result);
+          // rpcError marks a definite refusal by the server, as opposed to a timeout or a lost connection.
+          msg.error ? pending.reject(Object.assign(new Error(JSON.stringify(msg.error)),{rpcError:msg.error})) : pending.resolve(msg.result);
         }
       } else {
         // Approval and user-input requests are left to the attached interactive CLI.
@@ -79,17 +80,36 @@ export class Rpc {
     } catch(error) {this.ws.close();throw error;}
     return this;
   }
+  // A WebSocket silently drops a send once it is closing or closed, so check the state first
+  // instead of waiting out the timeout.
+  get closed() {return !this.ws || this.ws.readyState!==WebSocket.OPEN;}
   call(method,params={},timeout=30000) {
+    if(this.closed)return Promise.reject(Object.assign(new Error('The local server connection is closed.'),{notSent:true}));
     const id=this.next++;
     return new Promise((resolve,reject) => {
       const timer=setTimeout(() => {this.pending.delete(id);reject(new Error(`${method}: no response in time. Check the status before retrying a request that changes anything, so it does not run twice.`));}, timeout);
       this.pending.set(id,{resolve,reject,timer});
-      // A send on a closed socket throws; drop the timer so it cannot keep the process alive.
-      try {this.ws.send(JSON.stringify({id,method,params}));}
-      catch(error) {clearTimeout(timer);this.pending.delete(id);reject(error);}
+      this.ws.send(JSON.stringify({id,method,params}));
     });
   }
   close() {this.ws?.close();}
+}
+
+// The MCP server outlives a dropped app-server connection and reopens it on the next call.
+// A call that was in flight still fails and is never retried, so a request that changes
+// anything cannot run twice.
+export class TeamLink {
+  constructor(open) {this.open=open;this.rpc=null;this.opening=null;}
+  connection() {
+    if(this.rpc && !this.rpc.closed)return Promise.resolve(this.rpc);
+    if(!this.opening) {
+      this.rpc?.close();
+      this.opening=this.open().then(rpc=>(this.rpc=rpc)).finally(()=>{this.opening=null;});
+    }
+    return this.opening;
+  }
+  async call(...args) {return (await this.connection()).call(...args);}
+  close() {this.rpc?.close();}
 }
 
 function openWindow(manifest, role) {
@@ -318,8 +338,18 @@ export class TeamControl {
     const prompt=`Assignment from the coordinator\nRole: ${role}\nModel: ${selected.model} / ${selected.effort}\nReason: ${modelReason}\nOwned paths: ${read_only?'none (read and analyze only)':owned.join(', ')}\n${task}\n\nReport your scope, the actual result, changed files and verification results.`;
     if(current.status?.type==='notLoaded')await this.rpc.call('thread/resume',{threadId:member.threadId});
     const sandboxPolicy=read_only?{type:'readOnly'}:(member.sandboxPolicy||{type:'workspaceWrite',writableRoots:[team.project],networkAccess:false,excludeTmpdirEnvVar:false,excludeSlashTmp:false});
-    const result=await this.rpc.call('turn/start',{threadId:member.threadId,input:[{type:'text',text:prompt}],sandboxPolicy,...selected});
-    member.lastTurnId=result.turn.id;member.ownedPaths=owned;
+    // Reserve the scope before the turn starts: a turn/start that times out may still run, and
+    // the overlap check must already see its paths. Only a request that surely did not start
+    // (refused by the server, or never sent) releases them.
+    const previousOwned=member.ownedPaths;
+    member.ownedPaths=owned;saveJson(this.manifest,team);
+    let result;
+    try{result=await this.rpc.call('turn/start',{threadId:member.threadId,input:[{type:'text',text:prompt}],sandboxPolicy,...selected});}
+    catch(error){
+      if(error.rpcError||error.notSent){member.ownedPaths=previousOwned;saveJson(this.manifest,team);}
+      throw error;
+    }
+    member.lastTurnId=result.turn.id;
     member.model=selected.model;member.reasoningEffort=selected.effort;member.modelReason=modelReason;
     saveJson(this.manifest,team);
     return {role,threadId:member.threadId,turnId:result.turn.id,status:result.turn.status,ownedPaths:owned,model:selected.model,reasoningEffort:selected.effort,modelReason};
@@ -353,7 +383,8 @@ export const teamTools=models=>[
 ];
 
 async function mcp(manifest){
-  const team=readJson(manifest), rpc=await new Rpc(team.url).open(), control=new TeamControl(manifest,rpc);
+  const team=readJson(manifest), link=new TeamLink(()=>new Rpc(team.url).open()), control=new TeamControl(manifest,link);
+  await link.connection();
   const lines=readline.createInterface({input:process.stdin,crlfDelay:Infinity});
   const send=message=>process.stdout.write(JSON.stringify(message)+'\n');
   for await(const line of lines){
@@ -381,7 +412,7 @@ async function mcp(manifest){
       send({jsonrpc:'2.0',id:request.id,result});
     }catch(error){send({jsonrpc:'2.0',id:request.id,error:{code:-32603,message:error.message}});}
   }
-  rpc.close();
+  link.close();
 }
 
 function lastManifest(value){

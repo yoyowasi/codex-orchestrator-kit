@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.2.1 - 2026-11-18
+
+Fixes for the four major defects a second review of 2.2.0 found.
+
+### Fixed
+
+- install.py: a rerun after the skills directory was moved and linked back (a junction or symlink, for example into a synced folder) no longer removes every installed skill file as an orphan. Recorded paths are compared with the planned files by their real location, so a path through the link counts as the same file.
+- install.py: `--uninstall` with `--packs`, `--with-cli` or `--max-subagents` is refused. Before, `--uninstall --packs dev` ignored `--packs` and removed every pack, core included. To drop a pack, rerun the install with a smaller `--packs` list.
+- codex-team: a call on a closed connection to the Codex server fails at once instead of waiting 30 seconds for a misleading timeout, and the MCP server reopens the connection on the next call, so the `team_*` tools recover after the server restarts. A call that was in flight is not retried. This corrects the 2.2.0 entry: its fix only covered a socket that was still connecting, because a WebSocket drops a send on a closed socket without an error.
+- codex-team: `team_dispatch` reserves the worker's `owned_paths` before it starts the turn. Before, they were recorded only after `turn/start` answered, so when that request timed out while the turn still ran, another worker could be given overlapping paths. A request the server refused, or one that was never sent, releases the reservation.
+
 ## 2.2.0 - 2026-11-18
 
 Nine new roles, one structure for every role's instructions, and fixes from a self-review of the repository.

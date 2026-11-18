@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import {normalizeOwned,scopesOverlap,TeamControl,parseModels,teamModels,modelSettings,coordinatorModel,
-  coordinatorInstructions,teamTools,flagValue,startOptions,DEFAULT_TEAM_MODELS} from './codex-team.mjs';
+  coordinatorInstructions,teamTools,flagValue,startOptions,Rpc,TeamLink,DEFAULT_TEAM_MODELS} from './codex-team.mjs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
@@ -166,4 +166,66 @@ test('an unknown command prints help and exits non-zero',()=>{
   const help=spawnSync(process.execPath,[cli,'help'],{encoding:'utf8'});
   assert.equal(help.status,0);
   assert.equal(help.stderr,'');
+});
+
+test('a timed-out turn/start keeps its file scope reserved; a refused one releases it',async t=>{
+  const dir=tempDir(t,'codex-team-reserve-');
+  const manifest=path.join(dir,'team.json');
+  const members=()=>({frontend_developer:{role:'frontend_developer',threadId:'front',ownedPaths:[]},
+    backend_developer:{role:'backend_developer',threadId:'back',ownedPaths:[]}});
+  for(const [name,failure,reserved] of [
+    ['timeout',new Error('turn/start: no response in time.'),['src']],
+    ['refused',Object.assign(new Error('{"code":-1}'),{rpcError:{code:-1}}),[]],
+    ['not sent',Object.assign(new Error('The local server connection is closed.'),{notSent:true}),[]]]){
+    await t.test(name,async()=>{
+      fs.writeFileSync(manifest,JSON.stringify({project:dir,members:members()}));
+      let frontStarted=false;
+      const rpc={call:async(method,p)=>{
+        if(method==='turn/start'){
+          if(p.threadId==='front'){
+            // The overlap check must already see the scope while the request is in flight.
+            assert.deepEqual(JSON.parse(fs.readFileSync(manifest)).members.frontend_developer.ownedPaths,['src']);
+            frontStarted=!failure.rpcError&&!failure.notSent;throw failure;
+          }
+          return {turn:{id:'b1',status:'inProgress'}};
+        }
+        // A timed-out request may still have started the turn.
+        return {thread:{status:{type:p.threadId==='front'&&frontStarted?'active':'idle'},turns:[]}};
+      }};
+      const ctl=new TeamControl(manifest,rpc);
+      await assert.rejects(()=>ctl.dispatch({role:'frontend_developer',task:'Change src',owned_paths:['src']}));
+      assert.deepEqual(JSON.parse(fs.readFileSync(manifest)).members.frontend_developer.ownedPaths,reserved);
+      const second=ctl.dispatch({role:'backend_developer',task:'Change src/x',owned_paths:['src/x']});
+      if(name==='timeout')await assert.rejects(()=>second,/ownership conflict/);
+      else assert.equal((await second).turnId,'b1');
+    });
+  }
+});
+
+test('a call on a closed connection fails at once without sending',async()=>{
+  const rpc=new Rpc('ws://127.0.0.1:9');
+  let sent=false;
+  rpc.ws={readyState:WebSocket.CLOSED,send:()=>{sent=true;},close(){}};
+  const started=Date.now();
+  await assert.rejects(()=>rpc.call('thread/read',{},20000),error=>error.notSent===true&&/closed/.test(error.message));
+  assert.ok(Date.now()-started<1000);
+  assert.equal(sent,false);
+  assert.equal(rpc.pending.size,0);
+});
+
+test('the team link reopens a dropped connection once, and does not retry the failed call',async()=>{
+  const opened=[];
+  const link=new TeamLink(async()=>{
+    const rpc={closed:false,calls:[],close(){this.closed=true;},
+      call:async function(method){this.calls.push(method);if(method==='fail')throw new Error('lost');return method;}};
+    opened.push(rpc);return rpc;
+  });
+  assert.equal(await link.call('a'),'a');
+  await assert.rejects(()=>link.call('fail'),/lost/);
+  opened[0].closed=true;
+  // Concurrent calls after a drop share one reconnection.
+  assert.deepEqual(await Promise.all([link.call('b'),link.call('c')]),['b','c']);
+  assert.equal(opened.length,2);
+  assert.deepEqual(opened[0].calls,['a','fail']);
+  assert.deepEqual(opened[1].calls,['b','c']);
 });
