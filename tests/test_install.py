@@ -1125,6 +1125,30 @@ class InstallTests(unittest.TestCase):
         self.assertIn(str(shim.resolve()), self.install(uninstall=True, force=True, bin_dir=old_bin)['removed'])
         self.assertFalse(shim.exists())
 
+    def test_two_kept_shims_both_stay_on_record(self):
+        # 2.2.1 after a --bin-dir move: a modified shim in the old and in the new bin directory.
+        self.install()
+        path = self.home / 'orchestrator-kit/install-manifest.json'
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        bins = [self.root / 'bin-x', self.root / 'bin-y']
+        for directory in bins:
+            directory.mkdir()
+            (directory / 'codex-team.cmd').write_bytes(b'@echo off\r\nrem local edit\r\n')
+            manifest['files'].append({'path': str((directory / 'codex-team.cmd').resolve()),
+                                      'sha256': sha256(b'@echo off\r\n')})
+        manifest.update(bin_dir=str(bins[1].resolve()), roots=manifest['roots'] + [str(b.resolve()) for b in bins])
+        path.write_text(json.dumps(manifest), encoding='utf-8')
+        kept = self.install(uninstall=True, bin_dir=bins[0])['kept_modified']
+        self.assertEqual(len([p for p in kept if p.endswith('codex-team.cmd')]), 2)
+        recorded = [entry['path'] for entry in self.manifest(self.home)['files']]
+        self.assertEqual(sorted(p for p in recorded if p.endswith('codex-team.cmd')),
+                         sorted(str((b / 'codex-team.cmd').resolve()) for b in bins))
+        # Both shims are still known: naming the directory the manifest does not record lets one
+        # forced uninstall accept and remove both (recorded bin_dir plus --bin-dir).
+        other = next(b for b in bins if str(b.resolve()) != self.manifest(self.home)['bin_dir'])
+        removed = self.install(uninstall=True, force=True, bin_dir=other)['removed']
+        self.assertEqual(len([p for p in removed if p.endswith('codex-team.cmd')]), 2)
+
     def test_skill_outside_the_recorded_skills_dir_names_the_option_that_accepts_it(self):
         self.install()
         path = self.home / 'orchestrator-kit/install-manifest.json'

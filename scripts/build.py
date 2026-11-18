@@ -82,7 +82,8 @@ HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*")
 FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
 # A `}}` that ends something shaped like a template token: a typo such as {role:reviewer}}.
 # Other `}}` (closing braces in JSON or code examples) are ordinary text.
-STRAY_CLOSE = re.compile(r"(?:role:[\w-]*|role-catalog|version|repository|marketplace)\s*\}\}")
+STRAY_CLOSE = re.compile(r"(?<![\w-])(?:role:[\w-]*|role-catalog|"
+                         + "|".join(map(re.escape, SCALAR_TOKENS)) + r")\s*\}\}")
 SHORT_DESCRIPTION_RANGE = (25, 64)
 # Characters a TOML multi-line literal string cannot contain (tab and LF are allowed).
 LITERAL_UNSAFE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -417,7 +418,9 @@ def _render_tokens(line: str, number: int, platform: str, source: Source, label:
 def _check_stray_braces(line: str, number: int, label: str) -> None:
     """The engine is line-based: a `{{` without its `}}` on the same line (including a token split
     across lines) or a stray `}}` would otherwise pass through as literal text."""
-    rest = TOKEN.sub("", line)
+    rest = TOKEN.sub("\0", line)
+    if "\0}}" in rest:  # {{version}}}} renders as 9.8.7}}
+        raise BuildError(f"{label}:{number}: extra }}}} right after a template token")
     if "{{" in rest:
         raise BuildError(f"{label}:{number}: unclosed {{{{ (a token must open and close on one line)")
     stray = STRAY_CLOSE.search(rest)
@@ -609,8 +612,9 @@ def _check_required_skill_file(source: Source, rel: str, rendered: str, platform
         end = lines.index("---", 1) if lines[0] == "---" and "---" in lines[1:] else None
         if end is None:
             raise BuildError(f"{where}: must start with --- frontmatter that is closed by ---")
-        names = [value.split(" #")[0].strip().strip("'\"") for key, colon, value
-                 in (line.partition(":") for line in lines[1:end]) if colon and key.strip() == "name"]
+        # A top-level `name:` key followed by a space, as YAML requires; quotes and a trailing comment allowed.
+        names = [re.split(r"[ \t]#", match.group(1), maxsplit=1)[0].strip().strip("'\"")
+                 for match in (re.fullmatch(r"name:[ \t]+(.*)", line) for line in lines[1:end]) if match]
         if names != [source.skill["name"]]:
             raise BuildError(f"{where}: frontmatter must contain `name: {source.skill['name']}` "
                              "(the manifest [skill] name)")

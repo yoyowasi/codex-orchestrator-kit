@@ -525,6 +525,8 @@ class SourceContractTests(BuildTestCase):
                                            "name: orchestrate"),
             "SKILL.md name only in the body": ({"skill/SKILL.md": "---\ndescription: x\n---\nname: orchestrate\n"},
                                                "name: orchestrate"),
+            "SKILL.md name without a space": ({"skill/SKILL.md": SKILL.replace("name: orchestrate", "name:orchestrate")},
+                                              "name: orchestrate"),
             "roles.md missing": ({"skill/references/roles.md": None}, "roles.md"),
             "roles.md without the catalog line": ({"skill/references/roles.md": "# Roles\n\nNo table.\n"},
                                                   "role catalog"),
@@ -540,7 +542,9 @@ class SourceContractTests(BuildTestCase):
         for name, (overrides, pattern) in cases.items():
             with self.subTest(name):
                 self.assertRejects(overrides, pattern)
-        for name_line in ('name: "orchestrate"', "name: 'orchestrate'", "name: orchestrate   # skill name"):
+        for name_line in ('name: "orchestrate"', "name: 'orchestrate'", "name: orchestrate   # skill name",
+                          "name: orchestrate\t# tab before the comment",
+                          "name: orchestrate\nmetadata:\n  name: helper"):
             with self.subTest(name_line):  # valid YAML spellings of the same name
                 outputs = self.render({"skill/SKILL.md": SKILL.replace("name: orchestrate", name_line)})
                 self.assertIn("skills/orchestrate/SKILL.md", outputs)
@@ -597,6 +601,7 @@ class SourceContractTests(BuildTestCase):
             "stray close after a valid token": ("skill/references/extra.md", "{{version}} role:code-checker}}\n",
                                                 "extra.md:1:"),
             "token typo with one brace": ("skill/references/extra.md", "Ask {role:code-checker}}.\n", "extra.md:1:"),
+            "extra close right after a token": ("skill/references/extra.md", "ok\nv{{version}}}}\n", "extra.md:2:"),
             "in the other platform's block": ("skill/references/extra.md",
                                               "<!-- @codex -->\nUse {{version\n<!-- @end -->\n", "extra.md:2:"),
             "in common rules": ("roles/_common.md", COMMON + "- {{role:code-checker\n", "_common.md:11:"),
@@ -605,7 +610,8 @@ class SourceContractTests(BuildTestCase):
             with self.subTest(name):
                 self.assertRejects({path: text}, re.escape(where))
         # Closing braces in code examples are ordinary text.
-        code = '```json\n{"task": {"id": 1}}\n```\n\n```js\nif (a) { if (b) { run(); }}\n```\n'
+        code = ('```json\n{"task": {"id": 1}}\n```\n\n```js\nif (a) { if (b) { run(); }}\n```\n\n'
+                '```js\nconst x = {subversion}}\n```\n')
         self.assertIn("skills/orchestrate/references/extra.md", self.render({"skill/references/extra.md": code}))
         source = role_toml("doc-looker", "extra", "Reads.", "- Read.\n- Ask {{role:code-checker.\n")
         line = source.splitlines().index("- Ask {{role:code-checker.") + 1

@@ -896,8 +896,10 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
                       if Path(entry['path']).name == 'codex-team.cmd']
         if kept_shims:  # a shim that stays where it is (modified, or not yet removed): the same rule
             launcher_dir = str(kept_shims[0])
+            # Every shim that stays keeps its entry (two after an earlier --bin-dir move), so a later
+            # --uninstall --force still finds it; only untracked shims in a new directory are dropped.
             entries = [entry for entry in entries if Path(entry['path']).name != 'codex-team.cmd'
-                       or Path(entry['path']).parent == kept_shims[0]]
+                       or Path(entry['path']).parent == kept_shims[0] or entry in kept_entries]
         elif launcher:
             launcher_dir = str(Path(launcher).parent)
         else:  # an uninstall still remembers where the shim was
