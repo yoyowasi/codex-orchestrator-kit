@@ -40,7 +40,7 @@ python scripts/install.py --uninstall          # remove what it installed
 | `--max-subagents N` | keep the existing limit, otherwise 12 | Set the per-session subagent limit in `config.toml` (positive integer). |
 | `--force` | off | Back up and replace files that differ from the release and were not installed by this tool; with `--uninstall`, also back up and remove files changed since install. |
 | `--dry-run` | off | Print the plan without writing: the files it would write (`would_write`), conflicts, removals, unmanaged roles and leftovers from earlier releases. It exits normally even when a real run would stop at conflicts. |
-| `--uninstall` | off | Remove the files recorded in the install manifest that are unchanged since install. |
+| `--uninstall` | off | Remove every file recorded in the install manifest that is unchanged since install. It takes no `--packs`, `--with-cli` or `--max-subagents`; to drop a pack, rerun the install with a smaller `--packs` list. |
 | `--prune-legacy` | off | Back up and remove files that releases before 2.0 installed: `orchestrator.toml` and `template-author.toml` in `agents/`, untracked files in the skill folder, and unmanaged role files of packs that are not selected. Without it, the installer lists such files under `legacy_files` and leaves them. |
 
 `--with-cli` and `--max-subagents` apply only to the `codex` target.

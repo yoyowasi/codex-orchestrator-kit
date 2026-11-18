@@ -550,6 +550,10 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
         raise ValueError('--max-subagents must be a positive integer.')
     if 'codex' not in targets and (with_cli or max_subagents is not None):
         raise ValueError('--with-cli and --max-subagents apply only to the codex target.')
+    if uninstall and (packs is not None or with_cli is not None or max_subagents is not None):
+        # An uninstall always removes everything recorded; ignoring these would remove more than asked.
+        raise ValueError('--uninstall removes every recorded file and takes no --packs, --with-cli or '
+                         '--max-subagents. To drop a pack, rerun the install with a smaller --packs list.')
     repo = Path(repo)
     release = _load_release(repo)
     homes = {}
@@ -647,6 +651,9 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
     if len(set(planned)) != len(planned):
         raise ValueError('Two install targets would write the same file; use separate directories.')
     planned = set(planned)
+    # The same file can be recorded under a path that now runs through a link (a skills directory
+    # moved and linked back), so compare real locations as well as the recorded spelling.
+    planned_real = {path.resolve() for path in planned}
 
     # Files a previous install recorded that this plan no longer writes: remove them only when
     # they are unchanged since install. With --uninstall --force, back up and remove the rest too.
@@ -654,7 +661,7 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
     for t in targets:
         for entry, path in recorded[t]:
             tracked.add(path)
-            if path in planned or path.is_symlink() or not path.is_file():
+            if path in planned or path.resolve() in planned_real or path.is_symlink() or not path.is_file():
                 continue
             if _sha256(path.read_bytes()) == entry['sha256']:
                 removals.append((path, t, False))
@@ -729,7 +736,7 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
     for directory, pattern, names, read_name in guards:
         _guard_role_names(directory, pattern, names, read_name, removing)
 
-    hashes = {path: entry['sha256'] for t in targets for entry, path in recorded[t]}
+    hashes = {path.resolve(): entry['sha256'] for t in targets for entry, path in recorded[t]}
     writes, conflicts = [], []
     for file in plan:
         if file.path.exists():
@@ -737,7 +744,7 @@ def install(codex_home: Path | None = None, skills_dir: Path | None = None, *, t
             if current == file.data:
                 continue
             # A file this tool installed and nobody changed since is a plain update.
-            if not (file.owned and hashes.get(file.path) == _sha256(current)):
+            if not (file.owned and hashes.get(file.path.resolve()) == _sha256(current)):
                 conflicts.append((file.path, file.target))
         writes.append(file)
     if conflicts and not force:
@@ -868,7 +875,8 @@ def main(argv=None):
     parser.add_argument('--dry-run', action='store_true',
                         help='Report the plan, including conflicts, without writing files')
     parser.add_argument('--uninstall', action='store_true',
-                        help='Remove the files recorded in the install manifest that are unchanged since install')
+                        help='Remove every file recorded in the install manifest that is unchanged since install '
+                             '(takes no --packs, --with-cli or --max-subagents)')
     parser.add_argument('--prune-legacy', action='store_true',
                         help='Back up and remove files that releases before 2.0 installed, including '
                              'unmanaged Codex role files of packs that are not selected')

@@ -689,6 +689,36 @@ class InstallTests(unittest.TestCase):
                         else:
                             agents.unlink()
 
+    def test_rerun_through_a_linked_skills_directory_keeps_the_skill(self):
+        self.install()
+        files = tree(self.skills)
+        moved = self.root / 'synced-skills'
+        self.skills.rename(moved)
+        if os.name == 'nt':
+            import _winapi
+            _winapi.CreateJunction(str(moved), str(self.skills))
+        else:
+            self.skills.symlink_to(moved, target_is_directory=True)
+        try:
+            # The manifest records the old spelling; the plan writes the same files through the link.
+            result = module.install(self.home, None, repo=self.repo, claude_home=self.claude)
+            self.assertEqual(result['removed'], [])
+            self.assertEqual(result['changed'], 0)
+            self.assertEqual(tree(moved), files)
+        finally:
+            if os.name == 'nt':
+                self.skills.rmdir()
+            else:
+                self.skills.unlink()
+
+    def test_uninstall_refuses_install_options_instead_of_removing_everything(self):
+        self.install(packs='core,dev')
+        for options in ({'packs': 'dev'}, {'with_cli': False}, {'max_subagents': 4}):
+            with self.subTest(options):
+                with self.assertRaisesRegex(ValueError, 'takes no --packs'):
+                    self.install(uninstall=True, **options)
+        self.assertIn('database-engineer.toml', tree(self.home / 'agents'))
+
     def test_existing_directories_survive_uninstall(self):
         self.skills.mkdir()
         (self.home / 'agents').mkdir(parents=True)
