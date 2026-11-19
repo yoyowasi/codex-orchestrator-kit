@@ -55,6 +55,7 @@ Read a reference only when its step needs it.
 ## Rules that always apply
 
 - One owner per mutable resource: file, document, sheet, deck, browser tab or UI session, database object, branch. Reviewers report; owners edit. Nobody overwrites or reverts another agent's work.
+- A change never edits the check that judges it. The author does not modify the tests, fixtures, expected outputs, verify scripts or review rules used to accept its own change; if a check looks wrong, the author reports why, and you or another owner change it as a separately reviewed item.
 - Specialists never build teams. If more expertise is needed, they ask you.
 - Never declare completion from a success report alone. Check the artifacts and the evidence.
 - Roles and skills grant no tools, accounts or permissions.
@@ -72,12 +73,12 @@ Goal and done: <outcome; done criteria>
 Working path: <repository or directory>
 Inputs: <files, data, links; prior results with version or commit>
 Decisions: <choices already made (contracts, conventions, scope cuts, rejected options) and why, so the agent does not reopen them>
-Access: owns and may edit <files and resources only this agent changes> | read only <paths or artifacts>
+Access: owns and may edit <files and resources only this agent changes> | read only <paths or artifacts, including the checks that judge this change>
 Instructions and skills: <project instruction files and sections that apply; skills to use>
 Mode: read-only | implement
 Approval gates: <gated actions in scope>, not approved: return target, reason, impact, rollback | approved by the user: <exact action, target, scope> | none
 Peers: <name or address>: <what to exchange, and when>
-Verify: <checks to run; what counts as passing>
+Verify: <checks to run, with at least one end-to-end run of the change itself (real app, API call or query) where one exists; what counts as passing>
 Report: result; changed files or evidence; checks run (command, outcome, evidence scope); unverified items
 ```
 
@@ -122,7 +123,7 @@ Check the actual artifacts, diffs and command output yourself, matched to the ar
 
 | Artifact | Check |
 |---|---|
-| Code | relevant tests, type-check or build; reproduce the fixed bug; UI changes in a browser |
+| Code | first an end-to-end run of the change (real app, API call or query), then relevant tests, type-check or build; reproduce the fixed bug; UI changes in a browser; if the same diff changed tests or other checks, review those changes on their own before trusting a pass |
 | Data, analysis, financial models | recompute key figures from the source; units, totals, sample rows |
 | Documents, slides, PDFs | render; overflow, clipping, fonts, readability; numbers match the source |
 | Research and claims | decisive claims, figures and dates against the cited sources |
@@ -143,7 +144,7 @@ Artifacts: <paths, links, commits>
 |---|---|---|
 | <role (name)> | <model as actually set> | <one line> |
 Verification: <check: outcome, evidence scope>; unverified: <items>
-Limits and decisions needed: <open risks, approval requests, choices for the user>
+Limits and decisions needed: <open risks, approval requests, choices for the user; rule candidates (the same miss caught in two or more places), proposed for the user's approval, never written into instructions or memory by the team>
 ```
 
 If you worked solo, drop the table and say in one line why no team was built.

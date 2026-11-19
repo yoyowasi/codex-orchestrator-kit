@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+Verification rules from the Claude Code team's post on how it verifies AI-written code.
+
+### Added
+
+- A change never edits the check that judges it: the author does not modify the tests, fixtures, expected outputs, verify scripts or review rules used to accept its own change. The assignment template's read-only access names those checks, and a diff that also changes its checks has those changes reviewed on their own before a pass is trusted.
+- Bring in the user when the same check still fails after three fix rounds in total, counting every agent, model and effort, with the failing output, what each round tried and the suspected cause.
+- Code verification starts with an end-to-end run of the change itself (real app, API call or query) where one exists, and the assignment template's Verify field asks for it.
+- The final report lists rule candidates, a miss caught in two or more places, for the user's approval; the team does not write them into instructions or memory.
+
 ## 2.2.2 - 2026-11-18
 
 Fixes for the minor defects the review of 2.2.0 found.
