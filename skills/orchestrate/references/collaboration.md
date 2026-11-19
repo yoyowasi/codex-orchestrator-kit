@@ -48,6 +48,7 @@ Each side states the point in dispute, its evidence and how the question could b
 - At most two resumes or follow-ups per finished agent; after that, spawn a fresh agent with a handoff.
 - End a debate when a round brings no new evidence.
 - Stalls: when an agent reports the same failure twice or a stage makes no progress, stop retrying it. Within the user's model pins and cost limits, hand the work, with the failure evidence, to a stronger model or a higher effort, narrow the task, or decide yourself. A stall retry counts toward the round and resume limits above.
+- Bring in the user: if the same check still fails after three fix rounds in total (counting every agent, model and effort), stop. Report the failing output, what each round tried and the suspected cause, and do not start a fourth round on your own.
 - Stop agents whose work is no longer needed, and do not keep idle agents waiting for work that may never come.
 
 ## Handoff through files
